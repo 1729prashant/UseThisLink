@@ -12,13 +12,12 @@ func InitDB(dbPath string) (*sql.DB, error) {
 		return nil, err
 	}
 	_, err = db.Exec(`
-        CREATE TABLE IF NOT EXISTS urls (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            original_url TEXT NOT NULL,
-            short_code TEXT UNIQUE NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            click_count INTEGER DEFAULT 0
-        )
+		CREATE TABLE IF NOT EXISTS url_mappings (
+			short_url TEXT PRIMARY KEY,
+			original_url TEXT NOT NULL,
+			visits INTEGER DEFAULT 0,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		);
     `)
 	return db, err
 }
