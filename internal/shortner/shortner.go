@@ -3,6 +3,7 @@ package shortner
 import (
 	"database/sql"
 	"errors"
+	"os"
 	"strconv"
 
 	"github.com/cespare/xxhash"
@@ -44,14 +45,20 @@ func toBase62(num uint64) string {
 
 // manage collisions
 func StoreURL(db *sql.DB, originalURL string) (string, error) {
+	baseURL := os.Getenv("BASE_URL")
+	if baseURL == "" {
+		return "", errors.New("BASE_URL not set")
+	}
+
 	for i := 0; i < 5; i++ {
-		shortURL := generateShortURL(originalURL + strconv.Itoa(i))
+		shortcode := generateShortURL(originalURL + strconv.Itoa(i))
 
 		_, err := db.Exec(`INSERT OR IGNORE INTO url_mappings (short_url, original_url) VALUES (?, ?)`,
-			shortURL, originalURL)
+			shortcode, originalURL)
 
 		if err == nil {
-			return shortURL, nil
+			// return the full short URL to the user
+			return baseURL + "/" + shortcode, nil
 		}
 	}
 	return "", errors.New("failed to generate unique short URL")

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"net/http"
+	"os"
 	"strings"
 	"usethislink/internal/shortner"
 
@@ -85,6 +86,7 @@ func StatsHandler(db *sql.DB) http.HandlerFunc {
 			http.NotFound(w, r)
 			return
 		}
+		resp.ShortURL = os.Getenv("BASE_URL") + "/" + resp.ShortURL
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)

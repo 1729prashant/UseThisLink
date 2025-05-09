@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>UseThisLink</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      padding: 2rem;
+    }
+
+    .box {
+      margin: 0 auto;
+      max-width: 400px;
+      padding: 2rem;
+      border: 1px solid #ccc;
+      border-radius: 10px;
+      background-color: #f9f9f9;
+    }
+
+    label {
+      display: block;
+      text-align: left;
+      margin: 1rem 0 0.3rem;
+      font-weight: bold;
+    }
+
+    input[type="text"] {
+      width: 100%;
+      padding: 0.5rem;
+      border-radius: 5px;
+      border: 1px solid #aaa;
+    }
+
+    .actions {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 1rem;
+    }
+
+    .actions button {
+      padding: 0.4rem 1rem;
+      border: none;
+      border-radius: 5px;
+      background: #4caf50;
+      color: white;
+      cursor: pointer;
+    }
+
+    #qrcode {
+      margin-top: 1rem;
+    }
+  </style>
+</head>
+<body>
+  <h1>UseThisLink</h1>
+
+  <div class="box">
+    <form id="shortenForm">
+      <label for="originalURL">Provide URL you want to shorten</label>
+      <input type="text" id="originalURL" name="original_url" required />
+
+      <label for="shortenedURL">Use this link</label>
+      <input type="text" id="shortenedURL" readonly />
+
+      <div class="actions">
+        <button type="button" onclick="copyURL()">📋 Copy</button>
+        <button type="button" onclick="generateQRCode()">🔳 QR</button>
+      </div>
+    </form>
+
+    <div id="qrcode"></div>
+  </div>
+
+  <script>
+    document.getElementById('shortenForm').addEventListener('submit', async function (e) {
+      e.preventDefault();
+      const original = document.getElementById('originalURL').value;
+
+      const res = await fetch('/shorten', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ original_url: original })
+      });
+
+      const data = await res.json();
+      document.getElementById('shortenedURL').value = data.short_url;
+    });
+
+    function copyURL() {
+      const field = document.getElementById('shortenedURL');
+      navigator.clipboard.writeText(field.value);
+      alert("Copied!");
+    }
+
+    function generateQRCode() {
+      const url = document.getElementById('shortenedURL').value;
+      const qrcode = document.getElementById('qrcode');
+      qrcode.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(url)}&size=150x150" alt="QR Code" />`;
+    }
+  </script>
+</body>
+</html>
