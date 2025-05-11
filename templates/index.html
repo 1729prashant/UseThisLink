@@ -26,8 +26,16 @@
       font-weight: bold;
     }
 
+    .input-row {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .input-row input[type="text"] {
+      flex: 1;
+    }
+
     input[type="text"] {
-      width: 100%;
       padding: 0.5rem;
       border-radius: 5px;
       border: 1px solid #aaa;
@@ -41,7 +49,9 @@
     }
 
     .actions button {
-      padding: 0.4rem 1rem;
+      flex: 1;
+      margin: 0 0.25rem;
+      padding: 0.4rem;
       border: none;
       border-radius: 5px;
       background: #4caf50;
@@ -60,10 +70,16 @@
   <div class="box">
     <form id="shortenForm">
       <label for="originalURL">Provide URL you want to shorten</label>
-      <input type="text" id="originalURL" name="original_url" required />
+      <div class="input-row">
+        <input type="text" id="originalURL" name="original_url" required />
+        <button type="submit">Shorten</button>
+      </div>
+
 
       <label for="shortenedURL">Use this link</label>
-      <input type="text" id="shortenedURL" readonly />
+      <div class="input-row">
+        <input type="text" id="shortenedURL" readonly />
+      </div>
 
       <div class="actions">
         <button type="button" onclick="copyURL()">📋 Copy</button>
@@ -77,6 +93,7 @@
   <script>
     document.getElementById('shortenForm').addEventListener('submit', async function (e) {
       e.preventDefault();
+
       const original = document.getElementById('originalURL').value;
 
       const res = await fetch('/shorten', {
@@ -84,6 +101,11 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ original_url: original })
       });
+
+      if (!res.ok) {
+        alert('Failed to shorten URL');
+        return;
+      }
 
       const data = await res.json();
       document.getElementById('shortenedURL').value = data.short_url;
