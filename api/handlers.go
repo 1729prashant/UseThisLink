@@ -4,13 +4,18 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
+
+	"usethislink/internal/analytics"
+	"usethislink/internal/mw"
 	"usethislink/internal/shortner"
 
 	"github.com/gorilla/mux"
+	"github.com/sirupsen/logrus"
 )
 
 type shortenRequest struct {
@@ -46,7 +51,11 @@ func ShortenHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		shortURL, err := shortner.StoreURL(db, rawURL)
+		sid := r.Context().Value(mw.SessionKey).(string)
+		// 1-time insert session row (best-effort; ignore error if exists)
+		db.Exec(`INSERT OR IGNORE INTO sessions (session_id, user_agent, ip_address) VALUES (?, ?, ?)`, sid, r.UserAgent(), r.RemoteAddr)
+
+		shortURL, err := shortner.StoreURL(db, sid, rawURL)
 		if err != nil {
 			http.Error(w, "Could not generate short URL", http.StatusInternalServerError)
 			return
@@ -74,20 +83,94 @@ func RedirectHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Increment visits (in a separate query)
-		_, _ = db.ExecContext(context.Background(),
-			`UPDATE url_mappings SET visits = visits + 1 WHERE short_url = ?`,
-			shortcode)
+		// Get session ID from context
+		sid, _ := r.Context().Value(mw.SessionKey).(string)
+
+		// Parse user agent
+		deviceInfo := analytics.ParseUserAgent(r.UserAgent())
+
+		// Get IP address
+		ipAddr := r.RemoteAddr
+		if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
+			ipAddr = strings.Split(forwarded, ",")[0]
+		}
+
+		// Get geolocation (non-blocking)
+		go func() {
+			geoInfo, err := analytics.GetLocationFromIP(ipAddr)
+			if err != nil {
+				logrus.Errorf("Failed to get geolocation: %v", err)
+				geoInfo = analytics.GeoInfo{City: "Unknown", Country: "Unknown"}
+			}
+
+			// Skip analytics for bots
+			if deviceInfo.Bot {
+				return
+			}
+
+			// Insert analytics record
+			_, err = db.ExecContext(context.Background(),
+				`INSERT INTO url_access_logs 
+				(short_url, session_id, ip_address, user_agent, referrer, visit_type,
+				city, country, browser, device, operating_system)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				shortcode, sid, ipAddr, r.UserAgent(), r.Referer(), "redirect",
+				geoInfo.City, geoInfo.Country,
+				fmt.Sprintf("%s %s", deviceInfo.Browser, deviceInfo.Version), // Include version
+				deviceInfo.Device,
+				deviceInfo.OperatingSystem)
+
+			if err != nil {
+				logrus.Errorf("Failed to insert access log: %v", err)
+			}
+
+			// Update link analytics
+			_, err = db.ExecContext(context.Background(),
+				`INSERT INTO link_analytics 
+				(short_url, total_visits, unique_visitors, redirect_count,
+				country_counts, browser_counts, device_counts)
+				VALUES (?, 1, 1, 1, ?, ?, ?)
+				ON CONFLICT(short_url) DO UPDATE SET
+				total_visits = total_visits + 1,
+				redirect_count = redirect_count + 1,
+				country_counts = json_patch(country_counts, json_object(?, '1')),
+				browser_counts = json_patch(browser_counts, json_object(?, '1')),
+				device_counts = json_patch(device_counts, json_object(?, '1'))`,
+				shortcode,
+				fmt.Sprintf(`{"%s": 1}`, geoInfo.Country),
+				fmt.Sprintf(`{"%s %s": 1}`, deviceInfo.Browser, deviceInfo.Version), // Include version
+				fmt.Sprintf(`{"%s": 1}`, deviceInfo.Device),
+				geoInfo.Country,
+				fmt.Sprintf("%s %s", deviceInfo.Browser, deviceInfo.Version), // Include version
+				deviceInfo.Device)
+
+			if err != nil {
+				logrus.Errorf("Failed to update analytics: %v", err)
+			}
+		}()
+
+		// Only increment visits for non-bots
+		if !deviceInfo.Bot {
+			_, _ = db.ExecContext(context.Background(),
+				`UPDATE url_mappings SET visits = visits + 1 WHERE short_url = ?`,
+				shortcode)
+		}
 
 		http.Redirect(w, r, longURL, http.StatusFound)
 	}
 }
 
 type statsResponse struct {
-	ShortURL    string `json:"short_url"`
-	OriginalURL string `json:"original_url"`
-	Visits      int    `json:"visits"`
-	CreatedAt   string `json:"created_at"`
+	ShortURL       string `json:"short_url"`
+	OriginalURL    string `json:"original_url"`
+	TotalVisits    int    `json:"total_visits"`
+	UniqueVisitors int    `json:"unique_visitors"`
+	RedirectCount  int    `json:"redirect_count"`
+	PreviewCount   int    `json:"preview_count"`
+	CreatedAt      string `json:"created_at"`
+	CountryStats   string `json:"country_stats,omitempty"`
+	BrowserStats   string `json:"browser_stats,omitempty"`
+	DeviceStats    string `json:"device_stats,omitempty"`
 }
 
 func StatsHandler(db *sql.DB) http.HandlerFunc {
@@ -96,9 +179,31 @@ func StatsHandler(db *sql.DB) http.HandlerFunc {
 
 		var resp statsResponse
 		err := db.QueryRowContext(context.Background(),
-			`SELECT short_url, original_url, visits, created_at
-			 FROM url_mappings WHERE short_url = ?`,
-			shortcode).Scan(&resp.ShortURL, &resp.OriginalURL, &resp.Visits, &resp.CreatedAt)
+			`SELECT 
+				u.short_url, u.original_url, u.visits, u.created_at,
+				COALESCE(a.total_visits, 0) as total_visits,
+				COALESCE(a.unique_visitors, 0) as unique_visitors,
+				COALESCE(a.redirect_count, 0) as redirect_count,
+				COALESCE(a.preview_count, 0) as preview_count,
+				COALESCE(a.country_counts, '{}') as country_counts,
+				COALESCE(a.browser_counts, '{}') as browser_counts,
+				COALESCE(a.device_counts, '{}') as device_counts
+			FROM url_mappings u 
+			LEFT JOIN link_analytics a ON u.short_url = a.short_url
+			WHERE u.short_url = ?`,
+			shortcode).Scan(
+			&resp.ShortURL,
+			&resp.OriginalURL,
+			&resp.TotalVisits,
+			&resp.CreatedAt,
+			&resp.TotalVisits,
+			&resp.UniqueVisitors,
+			&resp.RedirectCount,
+			&resp.PreviewCount,
+			&resp.CountryStats,
+			&resp.BrowserStats,
+			&resp.DeviceStats,
+		)
 
 		if err != nil {
 			http.NotFound(w, r)

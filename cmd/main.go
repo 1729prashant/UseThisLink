@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"html/template"
 	"log"
 	"net/http"
@@ -8,6 +9,7 @@ import (
 
 	"usethislink/api"
 	"usethislink/internal/db"
+	"usethislink/internal/mw"
 
 	"github.com/gorilla/mux"
 	"github.com/joho/godotenv"
@@ -45,8 +47,9 @@ func main() {
 
 	// Setup router
 	r := mux.NewRouter()
+	r.Use(mw.SessionMiddleware) // manage sessions
 
-	// Serve static files if you have CSS/JS later
+	// Serve static files if CSS/JS is used later
 	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 
 	// Serve index.html on "/"
@@ -67,6 +70,23 @@ func main() {
 	r.HandleFunc("/shorten", api.ShortenHandler(db)).Methods("POST")
 	r.HandleFunc("/{shortcode}", api.RedirectHandler(db)).Methods("GET")
 	r.HandleFunc("/stats/{shortcode}", api.StatsHandler(db)).Methods("GET")
+	r.HandleFunc("/admin/analytics", func(w http.ResponseWriter, r *http.Request) {
+		rows, _ := db.Query(`
+        SELECT date(accessed_at) as day, COUNT(*) 
+        FROM url_access_logs
+        GROUP BY day ORDER BY day`)
+		type row struct {
+			Day string
+			C   int
+		}
+		var data []row
+		for rows.Next() {
+			var d row
+			rows.Scan(&d.Day, &d.C)
+			data = append(data, d)
+		}
+		json.NewEncoder(w).Encode(data)
+	}).Methods("GET")
 
 	logrus.Infof("Starting UseThisLink on port:%s", port)
 	log.Fatal(http.ListenAndServe(":"+port, r))

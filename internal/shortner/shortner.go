@@ -44,17 +44,19 @@ func toBase62(num uint64) string {
 }
 
 // manage collisions
-func StoreURL(db *sql.DB, originalURL string) (string, error) {
+func StoreURL(db *sql.DB, sessionID, originalURL string) (string, error) {
+
 	baseURL := os.Getenv("BASE_URL")
 	if baseURL == "" {
 		return "", errors.New("BASE_URL not set")
 	}
 
+	//TODO: need a way to test and make robust
 	for i := 0; i < 5; i++ {
 		shortcode := generateShortURL(originalURL + strconv.Itoa(i))
 
-		_, err := db.Exec(`INSERT OR IGNORE INTO url_mappings (short_url, original_url) VALUES (?, ?)`,
-			shortcode, originalURL)
+		_, err := db.Exec(
+			`INSERT OR IGNORE INTO url_mappings (short_url, original_url, session_id) VALUES (?, ?, ?)`, shortcode, originalURL, sessionID)
 
 		if err == nil {
 			// return the full short URL to the user
