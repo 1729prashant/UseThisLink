@@ -1,11 +1,15 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"html/template"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"usethislink/api"
 	"usethislink/internal/db"
@@ -19,7 +23,6 @@ import (
 
 func main() {
 	// env vars
-	godotenv.Load()
 	err := godotenv.Load()
 	if err != nil {
 		log.Fatal("Error loading .env file")
@@ -86,8 +89,41 @@ func main() {
 			data = append(data, d)
 		}
 		json.NewEncoder(w).Encode(data)
+		w.Header().Set("Content-Type", "application/json")
 	}).Methods("GET")
 
-	logrus.Infof("Starting UseThisLink on port:%s", port)
-	log.Fatal(http.ListenAndServe(":"+port, r))
+	// Create HTTP server
+	srv := &http.Server{
+		Addr:    ":" + port,
+		Handler: r,
+	}
+
+	// Start server in a goroutine so it doesn't block
+	go func() {
+		logrus.Infof("Starting UseThisLink on port:%s", port)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logrus.Fatalf("Server failed to start: %v", err)
+		}
+	}()
+
+	// Setup channel to listen for signals to gracefully shutdown
+	quit := make(chan os.Signal, 1)
+	// We'll accept graceful shutdowns when quit via SIGINT (Ctrl+C)
+	// SIGKILL, SIGQUIT or SIGTERM will not be caught
+	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+
+	// Block until we receive a signal in the quit channel
+	sig := <-quit
+	logrus.Infof("Received shutdown signal: %v", sig)
+
+	// Create a deadline to wait for current operations to complete
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Doesn't block if no connections, otherwise waits until the timeout
+	if err := srv.Shutdown(ctx); err != nil {
+		logrus.Fatalf("Server forced to shutdown: %v", err)
+	}
+
+	logrus.Info("Server stopped")
 }

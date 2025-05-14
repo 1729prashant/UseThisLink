@@ -18,15 +18,30 @@
 - **Structure**:
 ```
 usethislink/
-  ├── cmd/          # Entry point
-  │   └── main.go
-  ├── internal/     # Core logic
-  │   ├── models/   # Data structs
-  │   ├── db/       # SQLite interactions
-  │   └── shortener/# Shortening logic
-  ├── api/          # HTTP handlers
-  ├── logs/         # Log files
-  └── tests/        # Unit tests
+├── CONTRIBUTING.md
+├── DesignDocument.md
+├── LICENSE
+├── README.md
+├── api
+│   └── handlers.go
+├── cmd
+│   └── main.go               
+├── go.mod
+├── go.sum
+├── internal                   
+│   ├── analytics
+│   │   ├── geolocation.go
+│   │   └── useragent.go
+│   ├── db
+│   │   ├── db.go         
+│   │   └── usethislink.db
+│   ├── mw
+│   │   └── session.go
+│   └── shortner
+│       └── shortner.go
+├── static
+└── templates
+    └── index.html
 ```
 
 - **SQLite Setup** (`internal/db/db.go`): 
