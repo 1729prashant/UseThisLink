@@ -215,3 +215,43 @@ func StatsHandler(db *sql.DB) http.HandlerFunc {
 		json.NewEncoder(w).Encode(resp)
 	}
 }
+
+type urlHistoryResponse struct {
+	OriginalURL string `json:"original_url"`
+	ShortURL    string `json:"short_url"`
+	ExpiryDate  string `json:"expiry_date"`
+	IsLoggedIn  bool   `json:"is_logged_in"`
+	UserEmail   string `json:"user_email"`
+}
+
+func HistoryHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		sid := r.Context().Value(mw.SessionKey).(string)
+		baseURL := os.Getenv("BASE_URL")
+		rows, err := db.Query(`
+			SELECT original_url, short_url, expiry_date, is_logged_in, user_email
+			FROM url_mappings WHERE session_id = ? ORDER BY created_at DESC
+		`, sid)
+		if err != nil {
+			http.Error(w, "Failed to fetch history", http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+		var history []urlHistoryResponse
+		for rows.Next() {
+			var h urlHistoryResponse
+			err := rows.Scan(&h.OriginalURL, &h.ShortURL, &h.ExpiryDate, &h.IsLoggedIn, &h.UserEmail)
+			if err == nil {
+				if baseURL != "" && h.ShortURL != "" {
+					h.ShortURL = baseURL + "/" + h.ShortURL
+				}
+				history = append(history, h)
+			}
+		}
+		if history == nil {
+			history = []urlHistoryResponse{}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(history)
+	}
+}

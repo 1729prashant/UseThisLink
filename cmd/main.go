@@ -92,6 +92,8 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 	}).Methods("GET")
 
+	r.HandleFunc("/api/history", api.HistoryHandler(db)).Methods("GET")
+
 	// Create HTTP server
 	srv := &http.Server{
 		Addr:    ":" + port,

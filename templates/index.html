@@ -101,6 +101,12 @@
     <div id="qrcode"></div>
   </div>
 
+  <!-- URL History Section (Card/List Style) -->
+  <div class="box" id="historySection" style="margin-top:2rem; display:none;">
+    <h2>Your Shortened URLs</h2>
+    <div id="historyList"></div>
+  </div>
+
   <script>
     document.getElementById('shortenForm').addEventListener('submit', async function (e) {
       e.preventDefault();
@@ -126,6 +132,9 @@
       originalInput.disabled = true;
       document.getElementById('newButton').style.display = 'inline-block';
       document.getElementById('actionButtons').style.display = 'flex';
+
+      // Reload history after new URL is created
+      loadHistory();
     });
 
     function copyURL() {
@@ -148,6 +157,66 @@
       document.getElementById('actionButtons').style.display = 'none';
       document.getElementById('qrcode').innerHTML = '';
     }
+
+    // Fetch and display URL history as cards
+    async function loadHistory() {
+      const res = await fetch('/api/history');
+      if (!res.ok) return;
+      const data = await res.json();
+      const section = document.getElementById('historySection');
+      const list = document.getElementById('historyList');
+      list.innerHTML = '';
+      if (!data.length) {
+        section.style.display = 'none';
+        return;
+      }
+      section.style.display = 'block';
+      data.forEach(row => {
+        const div = document.createElement('div');
+        div.style.border = '1px solid #ccc';
+        div.style.borderRadius = '8px';
+        div.style.padding = '1rem';
+        div.style.margin = '1rem 0';
+        div.style.background = '#f5f5f5';
+        div.innerHTML = `
+          <div style="text-align:left;">
+            <div><strong>Original URL:</strong> <a href="${row.original_url}" target="_blank">${row.original_url}</a></div>
+            <div><strong>Use this link:</strong> <a href="${row.short_url}" target="_blank">${row.short_url}</a></div>
+            <div style="margin-top:0.5rem;">
+              <button onclick="copyToClipboard('${row.short_url}')">Copy</button>
+              <button onclick="shareURL('${row.short_url}')">Share</button>
+              <button onclick="showQRCode('${row.short_url}')">QR Code</button>
+              <span class="qr-code-span"></span>
+            </div>
+          </div>
+        `;
+        list.appendChild(div);
+      });
+    }
+
+    function copyToClipboard(url) {
+      navigator.clipboard.writeText(url);
+      alert('Copied!');
+    }
+
+    function shareURL(url) {
+      if (navigator.share) {
+        navigator.share({ url });
+      } else {
+        copyToClipboard(url);
+        alert('URL copied! (Share not supported)');
+      }
+    }
+
+    function showQRCode(url) {
+      // Find the span next to the clicked button
+      const active = document.activeElement;
+      const span = active.parentElement.querySelector('.qr-code-span');
+      span.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(url)}&size=100x100" alt="QR Code" style="vertical-align:middle; margin-left:10px;" />`;
+    }
+
+    // Load history on page load
+    window.addEventListener('DOMContentLoaded', loadHistory);
   </script>
 </body>
 </html>

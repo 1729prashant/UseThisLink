@@ -22,7 +22,10 @@ func InitDB(dbPath string) (*sql.DB, error) {
 			original_url TEXT NOT NULL,
 			session_id TEXT,
 			visits INTEGER DEFAULT 0,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			expiry_date DATETIME,
+			is_logged_in BOOLEAN DEFAULT 0,
+			user_email TEXT
 		);
 
 		CREATE TABLE IF NOT EXISTS sessions (

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/cespare/xxhash"
 )
@@ -54,9 +55,12 @@ func StoreURL(db *sql.DB, sessionID, originalURL string) (string, error) {
 	//TODO: need a way to test and make robust
 	for i := 0; i < 5; i++ {
 		shortcode := generateShortURL(originalURL + strconv.Itoa(i))
-
+		expiry := time.Now().Add(48 * time.Hour).Format("2006-01-02 15:04:05")
 		_, err := db.Exec(
-			`INSERT OR IGNORE INTO url_mappings (short_url, original_url, session_id) VALUES (?, ?, ?)`, shortcode, originalURL, sessionID)
+			`INSERT OR IGNORE INTO url_mappings 
+			(short_url, original_url, session_id, expiry_date, is_logged_in, user_email) 
+			VALUES (?, ?, ?, ?, ?, ?)`,
+			shortcode, originalURL, sessionID, expiry, false, ' ')
 
 		if err == nil {
 			// return the full short URL to the user
