@@ -73,9 +73,84 @@
     #qrcode {
       margin-top: 1rem;
     }
+
+    .navbar {
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #fff;
+      padding: 1rem 2rem 1rem 2rem;
+      box-sizing: border-box;
+      border-bottom: 1px solid #eee;
+      margin-bottom: 2rem;
+    }
+    .nav-links {
+      display: flex;
+      gap: 2rem;
+    }
+    .nav-link {
+      color: #111;
+      text-decoration: none;
+      font-weight: 500;
+      font-size: 1rem;
+      background: none;
+      border: none;
+      padding: 0;
+      cursor: pointer;
+      transition: color 0.2s;
+    }
+    .nav-link:hover {
+      color: #304ad8;
+    }
+    .nav-actions {
+      display: flex;
+      gap: 1rem;
+    }
+    .login-btn {
+      color: #304ad8;
+      background: #fff;
+      border: 2px solid #304ad8;
+      border-radius: 20px;
+      padding: 0.4rem 1.2rem;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 1rem;
+      transition: background 0.2s, color 0.2s;
+    }
+    .login-btn:hover {
+      background: #f0f4ff;
+    }
+    .signup-btn {
+      color: #fff;
+      background: #304ad8;
+      border: 2px solid #304ad8;
+      border-radius: 20px;
+      padding: 0.4rem 1.2rem;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 1rem;
+      transition: background 0.2s, color 0.2s;
+    }
+    .signup-btn:hover {
+      background: #1d2fa3;
+      color: #fff;
+    }
   </style>
 </head>
 <body>
+  <header class="navbar">
+    <nav class="nav-links">
+      <a href="/plans.html" class="nav-link">Plans</a>
+      <a href="/resources.html" class="nav-link">Resources</a>
+      <a href="/help.html" class="nav-link">Help</a>
+    </nav>
+    <div class="nav-actions">
+      <a href="/login.html" class="login-btn">Log in</a>
+      <a href="/signup.html" class="signup-btn">Sign Up</a>
+    </div>
+  </header>
+
   <h1>UseThisLink</h1>
 
   <div class="box">
