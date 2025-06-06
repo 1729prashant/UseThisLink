@@ -77,7 +77,7 @@
     .navbar {
       width: 100%;
       display: flex;
-      justify-content: space-between;
+      justify-content: center;
       align-items: center;
       background: #fff;
       padding: 1rem 2rem 1rem 2rem;
@@ -85,9 +85,11 @@
       border-bottom: 1px solid #eee;
       margin-bottom: 2rem;
     }
-    .nav-links {
+    .nav-center {
       display: flex;
       gap: 2rem;
+      justify-content: center;
+      align-items: center;
     }
     .nav-link {
       color: #111;
@@ -140,15 +142,13 @@
 </head>
 <body>
   <header class="navbar">
-    <nav class="nav-links">
+    <nav class="nav-center">
       <a href="/plans.html" class="nav-link">Plans</a>
       <a href="/resources.html" class="nav-link">Resources</a>
       <a href="/help.html" class="nav-link">Help</a>
-    </nav>
-    <div class="nav-actions">
       <a href="/login.html" class="login-btn">Log in</a>
       <a href="/signup.html" class="signup-btn">Sign Up</a>
-    </div>
+    </nav>
   </header>
 
   <h1>UseThisLink</h1>
