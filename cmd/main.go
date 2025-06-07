@@ -93,6 +93,7 @@ func main() {
 	}).Methods("GET")
 
 	r.HandleFunc("/api/history", api.HistoryHandler(db)).Methods("GET")
+	r.HandleFunc("/api/qrcode", api.QRCodeHandler()).Methods("GET")
 
 	// Create HTTP server
 	srv := &http.Server{

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"image/png"
 	"net/http"
 	"net/url"
 	"os"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
+	"github.com/skip2/go-qrcode"
 )
 
 type shortenRequest struct {
@@ -253,5 +255,25 @@ func HistoryHandler(db *sql.DB) http.HandlerFunc {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(history)
+	}
+}
+
+// QRCodeHandler serves a QR code PNG for a given URL (via ?data=...)
+func QRCodeHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		data := r.URL.Query().Get("data")
+		if data == "" {
+			http.Error(w, "Missing data parameter", http.StatusBadRequest)
+			return
+		}
+		qr, err := qrcode.New(data, qrcode.Medium)
+		if err != nil {
+			http.Error(w, "Failed to generate QR code", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "image/png")
+		w.Header().Set("Cache-Control", "no-store")
+		img := qr.Image(150)
+		png.Encode(w, img)
 	}
 }
