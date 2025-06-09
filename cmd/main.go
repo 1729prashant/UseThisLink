@@ -55,6 +55,12 @@ func main() {
 	// Serve static files if CSS/JS is used later
 	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 
+	// Serve assets (CSS, JS, etc.)
+	r.PathPrefix("/assets/").Handler(http.StripPrefix("/assets/", http.FileServer(http.Dir("templates/assets"))))
+
+	// Serve login.html
+	r.Path("/login.html").Handler(http.FileServer(http.Dir("templates")))
+
 	// Serve index.html on "/"
 	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
