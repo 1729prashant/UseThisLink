@@ -326,7 +326,8 @@
           <h4 class="modal-title">Login with</h4>
         </div>
         <div class="modal-body">
-          <div class="box">
+          <!-- Social Media Box (always visible) -->
+          <div class="box social-box">
             <div class="content">
               <div class="social">
                 <a class="circle github" href="#">
@@ -339,13 +340,19 @@
                   <i class="fa fa-facebook fa-fw"></i>
                 </a>
               </div>
-              <div class="division">
-                <div class="line l"></div>
-                <span>or</span>
-                <div class="line r"></div>
-              </div>
+            </div>
+          </div>
+          <!-- OR Separator -->
+          <div class="division">
+            <div class="line l"></div>
+            <span>or</span>
+            <div class="line r"></div>
+          </div>
+          <!-- Login Box (only visible in login mode) -->
+          <div class="box loginBox" style="display:none;">
+            <div class="content">
               <div class="error"></div>
-              <div class="form loginBox">
+              <div class="form">
                 <form method="" action="" accept-charset="UTF-8">
                   <input id="email" class="form-control" type="text" placeholder="Email" name="email">
                   <input id="password" class="form-control" type="password" placeholder="Password" name="password">
@@ -354,8 +361,9 @@
               </div>
             </div>
           </div>
-          <div class="box">
-            <div class="content registerBox" style="display:none;">
+          <!-- Register Box (only visible in signup mode) -->
+          <div class="box registerBox" style="display:none;">
+            <div class="content">
               <div class="form">
                 <form method="" html="{:multipart=>true}" data-remote="true" action="" accept-charset="UTF-8">
                   <input id="email" class="form-control" type="text" placeholder="Email" name="email">
