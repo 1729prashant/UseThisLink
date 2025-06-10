@@ -198,8 +198,10 @@
 
     <div id="qrcode"></div>
   </div>
-
-  <!-- URL History Section (Card/List Style) -->
+  <div style="height: 2em; margin: 1.5rem 0;"></div>
+  <div id="copiedMessageContainer" style="height: 2em; display: flex; align-items: center; justify-content: center; margin-bottom: 0.5rem;">
+    <span id="copiedMessage" style="display: none; opacity: 0; color: #555; font-style: italic; transition: opacity 1s;"></span>
+  </div>
   <div class="box" id="historySection" style="margin-top:2rem; display:none;">
     <h2>Your Shortened URLs</h2>
     <div id="historyList"></div>
@@ -235,10 +237,25 @@
       loadHistory();
     });
 
+    function showCopiedMessage() {
+      const msg = document.getElementById('copiedMessage');
+      msg.textContent = 'URL copied to clipboard';
+      msg.style.display = 'inline';
+      msg.style.opacity = '1';
+      // Fully visible for 1s, then fade out over 1s
+      setTimeout(() => {
+        msg.style.opacity = '0';
+      }, 1000);
+      // After fade out, hide the element
+      setTimeout(() => {
+        msg.style.display = 'none';
+      }, 2000);
+    }
+
     function copyURL() {
       const field = document.getElementById('shortenedURL');
       navigator.clipboard.writeText(field.value);
-      alert("Copied!");
+      showCopiedMessage();
     }
 
     function generateQRCode() {
@@ -294,7 +311,7 @@
 
     function copyToClipboard(url) {
       navigator.clipboard.writeText(url);
-      alert('Copied!');
+      showCopiedMessage();
     }
 
     function shareURL(url) {
@@ -302,7 +319,6 @@
         navigator.share({ url });
       } else {
         copyToClipboard(url);
-        alert('URL copied! (Share not supported)');
       }
     }
 
