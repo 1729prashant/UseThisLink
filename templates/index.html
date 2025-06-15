@@ -17,6 +17,7 @@
       border: 1px solid #ccc;
       border-radius: 10px;
       background-color: #f9f9f9;
+      text-align: left;
     }
 
     label {
@@ -29,6 +30,8 @@
     .input-row {
       display: flex;
       gap: 0.5rem;
+      align-items: center;
+      flex-wrap: nowrap;
     }
 
     .input-row input[type="text"] {
@@ -61,13 +64,27 @@
 
     #newButton {
       display: none;
-      margin-left: 0.5rem;
       padding: 0.4rem;
       border: none;
       border-radius: 5px;
       background: #304ad8;
       color: white;
       cursor: pointer;
+      min-width: 60px;
+      height: 32px;
+      line-height: 1;
+    }
+
+    button[type="submit"] {
+      padding: 0.4rem;
+      border: none;
+      border-radius: 5px;
+      background: #4caf50;
+      color: white;
+      cursor: pointer;
+      min-width: 60px;
+      height: 32px;
+      line-height: 1;
     }
 
     #qrcode {
