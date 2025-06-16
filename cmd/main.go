@@ -100,6 +100,10 @@ func main() {
 
 	r.HandleFunc("/api/history", api.HistoryHandler(db)).Methods("GET")
 	r.HandleFunc("/api/qrcode", api.QRCodeHandler()).Methods("GET")
+	r.HandleFunc("/api/register", api.RegisterHandler(db)).Methods("POST")
+	r.HandleFunc("/api/verify-otp", api.VerifyOTPHandler(db)).Methods("POST")
+	r.HandleFunc("/api/login", api.LoginHandler(db)).Methods("POST")
+	r.HandleFunc("/api/logout", api.LogoutHandler(db)).Methods("POST")
 
 	// Create HTTP server
 	srv := &http.Server{

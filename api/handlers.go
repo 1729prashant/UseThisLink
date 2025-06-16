@@ -16,9 +16,15 @@ import (
 	"usethislink/internal/mw"
 	"usethislink/internal/shortner"
 
+	"crypto/rand"
+	"encoding/base64"
+	"net/smtp"
+	"time"
+
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 	"github.com/skip2/go-qrcode"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type shortenRequest struct {
@@ -357,4 +363,252 @@ func QRCodeHandler() http.HandlerFunc {
 		img := qr.Image(150)
 		png.Encode(w, img)
 	}
+}
+
+// generateOTP generates a 6-digit random OTP
+func generateOTP() (string, error) {
+	b := make([]byte, 4)
+	_, err := rand.Read(b)
+	if err != nil {
+		return "", err
+	}
+	otp := int(b[0])<<24 | int(b[1])<<16 | int(b[2])<<8 | int(b[3])
+	otp = otp % 1000000
+	if otp < 0 {
+		otp = -otp
+	}
+	return fmt.Sprintf("%06d", otp), nil
+}
+
+// hashPassword hashes the password using bcrypt
+func hashPassword(password string) (string, error) {
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	return string(hash), err
+}
+
+// sendOTPEmail sends an OTP to the user's email using SMTP
+func sendOTPEmail(to, otp string) error {
+	smtpHost := os.Getenv("SMTP_HOST")
+	smtpPort := os.Getenv("SMTP_PORT")
+	smtpUser := os.Getenv("SMTP_USER")
+	smtpPass := os.Getenv("SMTP_PASS")
+	from := smtpUser
+	msg := []byte("Subject: Your OTP for UseThisLink Registration\r\n" +
+		"To: " + to + "\r\n" +
+		"Content-Type: text/plain; charset=UTF-8\r\n" +
+		"\r\n" +
+		fmt.Sprintf("Your OTP for UseThisLink registration is: %s\nThis OTP is valid for 10 minutes.", otp))
+	auth := smtp.PlainAuth("", smtpUser, smtpPass, smtpHost)
+	return smtp.SendMail(smtpHost+":"+smtpPort, auth, from, []string{to}, msg)
+}
+
+// RegisterHandler handles user registration and sends OTP
+func RegisterHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		type reqBody struct {
+			Email    string `json:"email"`
+			Password string `json:"password"`
+		}
+		var req reqBody
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Email == "" || req.Password == "" {
+			http.Error(w, "Invalid request", http.StatusBadRequest)
+			return
+		}
+		// Check if user already exists
+		var exists int
+		err := db.QueryRow("SELECT COUNT(1) FROM USERDEFN WHERE EMAILID = ?", req.Email).Scan(&exists)
+		if err != nil {
+			http.Error(w, "DB error", http.StatusInternalServerError)
+			return
+		}
+		if exists > 0 {
+			http.Error(w, "User already exists", http.StatusConflict)
+			return
+		}
+		// Generate OTP
+		otp, err := generateOTP()
+		if err != nil {
+			http.Error(w, "Failed to generate OTP", http.StatusInternalServerError)
+			return
+		}
+		// Hash password
+		phash, err := hashPassword(req.Password)
+		if err != nil {
+			http.Error(w, "Failed to hash password", http.StatusInternalServerError)
+			return
+		}
+		// Generate UUID
+		uuid := base64.URLEncoding.EncodeToString([]byte(fmt.Sprintf("%s-%d", req.Email, time.Now().UnixNano())))
+		// Store in pending_registrations
+		expiry := time.Now().Add(10 * time.Minute)
+		_, err = db.Exec(`INSERT OR REPLACE INTO pending_registrations (EMAILID, OTP, OTP_EXPIRES_AT, USERPSWD, UNIQUEID, CREATED_AT) VALUES (?, ?, ?, ?, ?, ?)`, req.Email, otp, expiry, phash, uuid, time.Now())
+		if err != nil {
+			http.Error(w, "Failed to store registration", http.StatusInternalServerError)
+			return
+		}
+		// Send OTP email
+		if err := sendOTPEmail(req.Email, otp); err != nil {
+			http.Error(w, "Failed to send OTP email", http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"otp_sent"}`))
+	}
+}
+
+// VerifyOTPHandler handles OTP verification and user creation
+func VerifyOTPHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		type reqBody struct {
+			Email string `json:"email"`
+			OTP   string `json:"otp"`
+		}
+		var req reqBody
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Email == "" || req.OTP == "" {
+			http.Error(w, "Invalid request", http.StatusBadRequest)
+			return
+		}
+		// Get pending registration
+		var dbOTP, phash, uuid string
+		var otpExpiry, createdAt time.Time
+		err := db.QueryRow(`SELECT OTP, OTP_EXPIRES_AT, USERPSWD, UNIQUEID, CREATED_AT FROM pending_registrations WHERE EMAILID = ?`, req.Email).Scan(&dbOTP, &otpExpiry, &phash, &uuid, &createdAt)
+		if err == sql.ErrNoRows {
+			http.Error(w, "No pending registration", http.StatusNotFound)
+			return
+		} else if err != nil {
+			http.Error(w, "DB error", http.StatusInternalServerError)
+			return
+		}
+		if time.Now().After(otpExpiry) {
+			http.Error(w, "OTP expired", http.StatusUnauthorized)
+			return
+		}
+		if req.OTP != dbOTP {
+			http.Error(w, "Invalid OTP", http.StatusUnauthorized)
+			return
+		}
+		// Insert into USERDEFN
+		_, err = db.Exec(`INSERT INTO USERDEFN (EMAILID, UNIQUEID, USERPSWD, CREATEDETTM, LASTUPDDTTM, LASTPSWDCHANGE, ACCTLOCK, ISSIGNEDIN, DEFAULTHOME, FAILEDLOGINS, LANGUAGE_CODE, CURRENCY_CODE) VALUES (?, ?, ?, ?, ?, ?, 0, 0, '', 0, 'ENG', 'INR')`, req.Email, uuid, phash, createdAt, time.Now(), time.Now())
+		if err != nil {
+			http.Error(w, "Failed to create user", http.StatusInternalServerError)
+			return
+		}
+		// Delete from pending_registrations
+		_, _ = db.Exec(`DELETE FROM pending_registrations WHERE EMAILID = ?`, req.Email)
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"registered"}`))
+	}
+}
+
+// Helper to set secure session cookie
+func setSessionCookie(w http.ResponseWriter, sessionID string) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     "UTL_SESSION",
+		Value:    sessionID,
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteStrictMode,
+		MaxAge:   60 * 60 * 24 * 7, // 1 week
+	})
+}
+
+// LoginHandler handles secure login
+func LoginHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		type reqBody struct {
+			Email    string `json:"email"`
+			Password string `json:"password"`
+		}
+		var req reqBody
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Email == "" || req.Password == "" {
+			http.Error(w, "Invalid request", http.StatusBadRequest)
+			return
+		}
+		// Get user info
+		var hash string
+		var acctLock, failedLogins int
+		var uniqueID string
+		var lastSignOn, lastSignOff, lastPwdChange, createDetTm, lastUpdTm sql.NullTime
+		err := db.QueryRow(`SELECT USERPSWD, ACCTLOCK, FAILEDLOGINS, UNIQUEID, LASTSIGNONDTTM, LASTSIGNOFFDTTM, LASTPSWDCHANGE, CREATEDETTM, LASTUPDDTTM FROM USERDEFN WHERE EMAILID = ?`, req.Email).Scan(&hash, &acctLock, &failedLogins, &uniqueID, &lastSignOn, &lastSignOff, &lastPwdChange, &createDetTm, &lastUpdTm)
+		if err == sql.ErrNoRows {
+			http.Error(w, "Invalid email or password", http.StatusUnauthorized)
+			return
+		} else if err != nil {
+			http.Error(w, "DB error", http.StatusInternalServerError)
+			return
+		}
+		if acctLock != 0 {
+			http.Error(w, "Account is locked", http.StatusForbidden)
+			return
+		}
+		if bcrypt.CompareHashAndPassword([]byte(hash), []byte(req.Password)) != nil {
+			// Increment FAILEDLOGINS
+			db.Exec(`UPDATE USERDEFN SET FAILEDLOGINS = FAILEDLOGINS + 1 WHERE EMAILID = ?`, req.Email)
+			http.Error(w, "Invalid email or password", http.StatusUnauthorized)
+			return
+		}
+		// Reset FAILEDLOGINS, set ISSIGNEDIN, update LASTSIGNONDTTM
+		db.Exec(`UPDATE USERDEFN SET FAILEDLOGINS = 0, ISSIGNEDIN = 1, LASTSIGNONDTTM = ? WHERE EMAILID = ?`, time.Now(), req.Email)
+		// Get or create session
+		sid, err := r.Cookie("UTL_SESSION")
+		var sessionID string
+		if err == nil && sid.Value != "" {
+			sessionID = sid.Value
+		} else {
+			sessionID = base64.URLEncoding.EncodeToString([]byte(req.Email + time.Now().String()))
+			_, _ = db.Exec(`INSERT OR IGNORE INTO sessions (session_id, user_agent, ip_address, user_email) VALUES (?, ?, ?, ?)`, sessionID, r.UserAgent(), r.RemoteAddr, req.Email)
+		}
+		// Update session to associate with user
+		_, _ = db.Exec(`UPDATE sessions SET user_email = ?, created_at = ? WHERE session_id = ?`, req.Email, time.Now(), sessionID)
+		setSessionCookie(w, sessionID)
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"logged_in"}`))
+	}
+}
+
+// LogoutHandler logs out the user and clears session
+func LogoutHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		sid, err := r.Cookie("UTL_SESSION")
+		if err != nil || sid.Value == "" {
+			http.Error(w, "No session", http.StatusUnauthorized)
+			return
+		}
+		// Get user_email from session
+		var email string
+		db.QueryRow(`SELECT user_email FROM sessions WHERE session_id = ?`, sid.Value).Scan(&email)
+		if email != "" {
+			// Set ISSIGNEDIN=0, update LASTSIGNOFFDTTM
+			_, _ = db.Exec(`UPDATE USERDEFN SET ISSIGNEDIN = 0, LASTSIGNOFFDTTM = ? WHERE EMAILID = ?`, time.Now(), email)
+		}
+		// Remove user_email from session
+		_, _ = db.Exec(`UPDATE sessions SET user_email = NULL WHERE session_id = ?`, sid.Value)
+		// Expire cookie
+		http.SetCookie(w, &http.Cookie{
+			Name:     "UTL_SESSION",
+			Value:    "",
+			Path:     "/",
+			HttpOnly: true,
+			Secure:   true,
+			SameSite: http.SameSiteStrictMode,
+			MaxAge:   -1,
+		})
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"logged_out"}`))
+	}
+}
+
+// AuthMiddleware checks for authenticated session (stub for now)
+func AuthMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sid, err := r.Cookie("UTL_SESSION")
+		if err != nil || sid.Value == "" {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		// Optionally, check session in DB and user_email is set
+		// ...
+		next.ServeHTTP(w, r)
+	})
 }
