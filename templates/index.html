@@ -315,10 +315,10 @@
             <div><strong>Original URL:</strong> <a href="${row.original_url}" target="_blank">${row.original_url}</a></div>
             <div><strong>Use this link:</strong> <a href="${row.short_url}" target="_blank">${row.short_url}</a></div>
             <div style="margin-top:0.5rem;">
+              <span class="qr-code-span"></span>
               <button onclick="copyToClipboard('${row.short_url}')">Copy</button>
               <button onclick="shareURL('${row.short_url}')">Share</button>
               <button onclick="showQRCode('${row.short_url}')">QR Code</button>
-              <span class="qr-code-span"></span>
             </div>
           </div>
         `;

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"image/png"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -26,6 +27,72 @@ type shortenRequest struct {
 
 type shortenResponse struct {
 	ShortURL string `json:"short_url"`
+}
+
+// isReservedIP checks if the IP is in a reserved/special-use range and returns (true, scope string)
+func isReservedIP(ipStr string) (bool, string) {
+	ip := net.ParseIP(ipStr)
+	if ip == nil {
+		return false, ""
+	}
+	// IPv4 ranges
+	reserved := []struct {
+		cidr  string
+		scope string
+	}{
+		{"0.0.0.0/8", "Software"},
+		{"10.0.0.0/8", "Private network"},
+		{"100.64.0.0/10", "Private network"},
+		{"127.0.0.0/8", "Host"},
+		{"169.254.0.0/16", "Subnet"},
+		{"172.16.0.0/12", "Private network"},
+		{"192.0.0.0/24", "Private network"},
+		{"192.0.2.0/24", "Documentation"},
+		{"192.88.99.0/24", "Internet"},
+		{"192.168.0.0/16", "Private network"},
+		{"198.18.0.0/15", "Private network"},
+		{"198.51.100.0/24", "Documentation"},
+		{"203.0.113.0/24", "Documentation"},
+		{"224.0.0.0/4", "Internet"},
+		{"233.252.0.0/24", "Documentation"},
+		{"240.0.0.0/4", "Internet"},
+		{"255.255.255.255/32", "Subnet"},
+	}
+	for _, r := range reserved {
+		_, ipnet, err := net.ParseCIDR(r.cidr)
+		if err == nil && ipnet.Contains(ip) {
+			return true, r.scope
+		}
+	}
+	// IPv6 ranges
+	reserved6 := []struct {
+		cidr  string
+		scope string
+	}{
+		{"::1/128", "Host"},
+		{"::/128", "Software"},
+		{"::ffff:0:0/96", "Software"},
+		{"::ffff:0:0:0/96", "Software"},
+		{"64:ff9b::/96", "The global Internet"},
+		{"64:ff9b:1::/48", "Private internets"},
+		{"100::/64", "Routing"},
+		{"2001::/32", "The global Internet"},
+		{"2001:20::/28", "Software"},
+		{"2001:db8::/32", "Documentation"},
+		{"2002::/16", "The global Internet"},
+		{"3fff::/20", "Documentation"},
+		{"5f00::/16", "Routing"},
+		{"fc00::/7", "Private internets"},
+		{"fe80::/10", "Link"},
+		{"ff00::/8", "The global Internet"},
+	}
+	for _, r := range reserved6 {
+		_, ipnet, err := net.ParseCIDR(r.cidr)
+		if err == nil && ipnet.Contains(ip) {
+			return true, r.scope
+		}
+	}
+	return false, ""
 }
 
 func ShortenHandler(db *sql.DB) http.HandlerFunc {
@@ -54,8 +121,13 @@ func ShortenHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		sid := r.Context().Value(mw.SessionKey).(string)
+		// Extract IP address only (remove port)
+		host, _, err := net.SplitHostPort(r.RemoteAddr)
+		if err != nil {
+			host = r.RemoteAddr // fallback, but should not happen
+		}
 		// 1-time insert session row (best-effort; ignore error if exists)
-		db.Exec(`INSERT OR IGNORE INTO sessions (session_id, user_agent, ip_address) VALUES (?, ?, ?)`, sid, r.UserAgent(), r.RemoteAddr)
+		db.Exec(`INSERT OR IGNORE INTO sessions (session_id, user_agent, ip_address) VALUES (?, ?, ?)`, sid, r.UserAgent(), host)
 
 		shortURL, err := shortner.StoreURL(db, sid, rawURL)
 		if err != nil {
@@ -92,17 +164,26 @@ func RedirectHandler(db *sql.DB) http.HandlerFunc {
 		deviceInfo := analytics.ParseUserAgent(r.UserAgent())
 
 		// Get IP address
-		ipAddr := r.RemoteAddr
+		ipAddr, _, err := net.SplitHostPort(r.RemoteAddr)
+		if err != nil {
+			ipAddr = r.RemoteAddr
+		}
 		if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
 			ipAddr = strings.Split(forwarded, ",")[0]
 		}
 
 		// Get geolocation (non-blocking)
 		go func() {
-			geoInfo, err := analytics.GetLocationFromIP(ipAddr)
-			if err != nil {
-				logrus.Errorf("Failed to get geolocation: %v", err)
-				geoInfo = analytics.GeoInfo{City: "Unknown", Country: "Unknown"}
+			var geoInfo analytics.GeoInfo
+			if reserved, scope := isReservedIP(ipAddr); reserved {
+				geoInfo = analytics.GeoInfo{City: "Localhost", Country: scope}
+			} else {
+				var err error
+				geoInfo, err = analytics.GetLocationFromIP(ipAddr)
+				if err != nil {
+					logrus.Errorf("Failed to get geolocation: %v", err)
+					geoInfo = analytics.GeoInfo{City: "Unknown", Country: "Unknown"}
+				}
 			}
 
 			// Skip analytics for bots
