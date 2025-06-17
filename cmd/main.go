@@ -2,12 +2,12 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"html/template"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+
 	"syscall"
 	"time"
 
@@ -59,7 +59,9 @@ func main() {
 	r.PathPrefix("/assets/").Handler(http.StripPrefix("/assets/", http.FileServer(http.Dir("templates/assets"))))
 
 	// Serve login.html
-	r.Path("/login.html").Handler(http.FileServer(http.Dir("templates")))
+	r.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "templates/login.html")
+	}).Methods("GET")
 
 	// Serve index.html on "/"
 	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -76,34 +78,16 @@ func main() {
 	}).Methods("GET")
 
 	// api endpoints
-	r.HandleFunc("/shorten", api.ShortenHandler(db)).Methods("POST")
-	r.HandleFunc("/{shortcode}", api.RedirectHandler(db)).Methods("GET")
-	r.HandleFunc("/stats/{shortcode}", api.StatsHandler(db)).Methods("GET")
-	r.HandleFunc("/admin/analytics", func(w http.ResponseWriter, r *http.Request) {
-		rows, _ := db.Query(`
-        SELECT date(accessed_at) as day, COUNT(*) 
-        FROM url_access_logs
-        GROUP BY day ORDER BY day`)
-		type row struct {
-			Day string
-			C   int
-		}
-		var data []row
-		for rows.Next() {
-			var d row
-			rows.Scan(&d.Day, &d.C)
-			data = append(data, d)
-		}
-		json.NewEncoder(w).Encode(data)
-		w.Header().Set("Content-Type", "application/json")
-	}).Methods("GET")
-
 	r.HandleFunc("/api/history", api.HistoryHandler(db)).Methods("GET")
 	r.HandleFunc("/api/qrcode", api.QRCodeHandler()).Methods("GET")
 	r.HandleFunc("/api/register", api.RegisterHandler(db)).Methods("POST")
 	r.HandleFunc("/api/verify-otp", api.VerifyOTPHandler(db)).Methods("POST")
 	r.HandleFunc("/api/login", api.LoginHandler(db)).Methods("POST")
 	r.HandleFunc("/api/logout", api.LogoutHandler(db)).Methods("POST")
+
+	r.HandleFunc("/shorten", api.ShortenHandler(db)).Methods("POST")
+	r.HandleFunc("/stats/{shortcode}", api.StatsHandler(db)).Methods("GET")
+	r.HandleFunc("/s/{shortcode}", api.RedirectHandler(db)).Methods("GET")
 
 	// Create HTTP server
 	srv := &http.Server{

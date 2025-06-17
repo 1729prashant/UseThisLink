@@ -105,6 +105,7 @@ func ShortenHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req shortenRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.URL == "" {
+			logrus.Errorf("Invalid request body: %v", err)
 			http.Error(w, "Invalid request body", http.StatusBadRequest)
 			return
 		}
@@ -122,6 +123,7 @@ func ShortenHandler(db *sql.DB) http.HandlerFunc {
 		// Parse the URL to validate domain presence
 		parsed, err := url.Parse(rawURL)
 		if err != nil || parsed.Host == "" || !strings.Contains(parsed.Host, ".") {
+			logrus.Errorf("Invalid or incomplete domain: %v", err)
 			http.Error(w, "Invalid or incomplete domain", http.StatusBadRequest)
 			return
 		}
@@ -137,9 +139,13 @@ func ShortenHandler(db *sql.DB) http.HandlerFunc {
 
 		shortURL, err := shortner.StoreURL(db, sid, rawURL)
 		if err != nil {
+			logrus.Errorf("Failed to generate short URL: %v", err)
 			http.Error(w, "Could not generate short URL", http.StatusInternalServerError)
 			return
 		}
+
+		// Add /s/ prefix to the short URL
+		shortURL = "/s/" + shortURL
 
 		resp := shortenResponse{
 			ShortURL: shortURL,
@@ -159,6 +165,7 @@ func RedirectHandler(db *sql.DB) http.HandlerFunc {
 			shortcode).Scan(&longURL)
 
 		if err != nil {
+			logrus.Errorf("Failed to fetch original URL: %v", err)
 			http.NotFound(w, r)
 			return
 		}
@@ -295,6 +302,7 @@ func StatsHandler(db *sql.DB) http.HandlerFunc {
 		)
 
 		if err != nil {
+			logrus.Errorf("Failed to fetch stats: %v", err)
 			http.NotFound(w, r)
 			return
 		}
@@ -322,6 +330,7 @@ func HistoryHandler(db *sql.DB) http.HandlerFunc {
 			FROM url_mappings WHERE session_id = ? ORDER BY created_at DESC
 		`, sid)
 		if err != nil {
+			logrus.Errorf("Failed to fetch history: %v", err)
 			http.Error(w, "Failed to fetch history", http.StatusInternalServerError)
 			return
 		}
@@ -350,11 +359,13 @@ func QRCodeHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		data := r.URL.Query().Get("data")
 		if data == "" {
+			logrus.Errorf("Missing data parameter")
 			http.Error(w, "Missing data parameter", http.StatusBadRequest)
 			return
 		}
 		qr, err := qrcode.New(data, qrcode.Medium)
 		if err != nil {
+			logrus.Errorf("Failed to generate QR code: %v", err)
 			http.Error(w, "Failed to generate QR code", http.StatusInternalServerError)
 			return
 		}
@@ -370,6 +381,7 @@ func generateOTP() (string, error) {
 	b := make([]byte, 4)
 	_, err := rand.Read(b)
 	if err != nil {
+		logrus.Errorf("Failed to generate OTP: %v", err)
 		return "", err
 	}
 	otp := int(b[0])<<24 | int(b[1])<<16 | int(b[2])<<8 | int(b[3])
@@ -383,7 +395,11 @@ func generateOTP() (string, error) {
 // hashPassword hashes the password using bcrypt
 func hashPassword(password string) (string, error) {
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	return string(hash), err
+	if err != nil {
+		logrus.Errorf("Failed to hash password: %v", err)
+		return "", err
+	}
+	return string(hash), nil
 }
 
 // sendOTPEmail sends an OTP to the user's email using SMTP
@@ -398,8 +414,18 @@ func sendOTPEmail(to, otp string) error {
 		"Content-Type: text/plain; charset=UTF-8\r\n" +
 		"\r\n" +
 		fmt.Sprintf("Your OTP for UseThisLink registration is: %s\nThis OTP is valid for 10 minutes.", otp))
-	auth := smtp.PlainAuth("", smtpUser, smtpPass, smtpHost)
-	return smtp.SendMail(smtpHost+":"+smtpPort, auth, from, []string{to}, msg)
+	var auth smtp.Auth
+	if smtpUser != "" {
+		auth = smtp.PlainAuth("", smtpUser, smtpPass, smtpHost)
+	} else {
+		auth = nil
+	}
+	err := smtp.SendMail(smtpHost+":"+smtpPort, auth, from, []string{to}, msg)
+	if err != nil {
+		logrus.Errorf("Failed to send OTP email via smtp.SendMail: %v", err)
+		return err
+	}
+	return nil
 }
 
 // RegisterHandler handles user registration and sends OTP
@@ -411,6 +437,7 @@ func RegisterHandler(db *sql.DB) http.HandlerFunc {
 		}
 		var req reqBody
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Email == "" || req.Password == "" {
+			logrus.Errorf("Invalid request: %v", err)
 			http.Error(w, "Invalid request", http.StatusBadRequest)
 			return
 		}
@@ -418,22 +445,26 @@ func RegisterHandler(db *sql.DB) http.HandlerFunc {
 		var exists int
 		err := db.QueryRow("SELECT COUNT(1) FROM USERDEFN WHERE EMAILID = ?", req.Email).Scan(&exists)
 		if err != nil {
+			logrus.Errorf("DB error: %v", err)
 			http.Error(w, "DB error", http.StatusInternalServerError)
 			return
 		}
 		if exists > 0 {
+			logrus.Errorf("User already exists")
 			http.Error(w, "User already exists", http.StatusConflict)
 			return
 		}
 		// Generate OTP
 		otp, err := generateOTP()
 		if err != nil {
+			logrus.Errorf("Failed to generate OTP: %v", err)
 			http.Error(w, "Failed to generate OTP", http.StatusInternalServerError)
 			return
 		}
 		// Hash password
 		phash, err := hashPassword(req.Password)
 		if err != nil {
+			logrus.Errorf("Failed to hash password: %v", err)
 			http.Error(w, "Failed to hash password", http.StatusInternalServerError)
 			return
 		}
@@ -443,11 +474,13 @@ func RegisterHandler(db *sql.DB) http.HandlerFunc {
 		expiry := time.Now().Add(10 * time.Minute)
 		_, err = db.Exec(`INSERT OR REPLACE INTO pending_registrations (EMAILID, OTP, OTP_EXPIRES_AT, USERPSWD, UNIQUEID, CREATED_AT) VALUES (?, ?, ?, ?, ?, ?)`, req.Email, otp, expiry, phash, uuid, time.Now())
 		if err != nil {
+			logrus.Errorf("Failed to store registration: %v", err)
 			http.Error(w, "Failed to store registration", http.StatusInternalServerError)
 			return
 		}
 		// Send OTP email
 		if err := sendOTPEmail(req.Email, otp); err != nil {
+			logrus.Errorf("Failed to send OTP email: %v", err)
 			http.Error(w, "Failed to send OTP email", http.StatusInternalServerError)
 			return
 		}
@@ -465,6 +498,7 @@ func VerifyOTPHandler(db *sql.DB) http.HandlerFunc {
 		}
 		var req reqBody
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Email == "" || req.OTP == "" {
+			logrus.Errorf("Invalid request: %v", err)
 			http.Error(w, "Invalid request", http.StatusBadRequest)
 			return
 		}
@@ -473,23 +507,28 @@ func VerifyOTPHandler(db *sql.DB) http.HandlerFunc {
 		var otpExpiry, createdAt time.Time
 		err := db.QueryRow(`SELECT OTP, OTP_EXPIRES_AT, USERPSWD, UNIQUEID, CREATED_AT FROM pending_registrations WHERE EMAILID = ?`, req.Email).Scan(&dbOTP, &otpExpiry, &phash, &uuid, &createdAt)
 		if err == sql.ErrNoRows {
+			logrus.Errorf("No pending registration")
 			http.Error(w, "No pending registration", http.StatusNotFound)
 			return
 		} else if err != nil {
+			logrus.Errorf("DB error: %v", err)
 			http.Error(w, "DB error", http.StatusInternalServerError)
 			return
 		}
 		if time.Now().After(otpExpiry) {
+			logrus.Errorf("OTP expired")
 			http.Error(w, "OTP expired", http.StatusUnauthorized)
 			return
 		}
 		if req.OTP != dbOTP {
+			logrus.Errorf("Invalid OTP")
 			http.Error(w, "Invalid OTP", http.StatusUnauthorized)
 			return
 		}
 		// Insert into USERDEFN
 		_, err = db.Exec(`INSERT INTO USERDEFN (EMAILID, UNIQUEID, USERPSWD, CREATEDETTM, LASTUPDDTTM, LASTPSWDCHANGE, ACCTLOCK, ISSIGNEDIN, DEFAULTHOME, FAILEDLOGINS, LANGUAGE_CODE, CURRENCY_CODE) VALUES (?, ?, ?, ?, ?, ?, 0, 0, '', 0, 'ENG', 'INR')`, req.Email, uuid, phash, createdAt, time.Now(), time.Now())
 		if err != nil {
+			logrus.Errorf("Failed to create user: %v", err)
 			http.Error(w, "Failed to create user", http.StatusInternalServerError)
 			return
 		}
@@ -522,6 +561,7 @@ func LoginHandler(db *sql.DB) http.HandlerFunc {
 		}
 		var req reqBody
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Email == "" || req.Password == "" {
+			logrus.Errorf("Invalid request: %v", err)
 			http.Error(w, "Invalid request", http.StatusBadRequest)
 			return
 		}
@@ -532,19 +572,23 @@ func LoginHandler(db *sql.DB) http.HandlerFunc {
 		var lastSignOn, lastSignOff, lastPwdChange, createDetTm, lastUpdTm sql.NullTime
 		err := db.QueryRow(`SELECT USERPSWD, ACCTLOCK, FAILEDLOGINS, UNIQUEID, LASTSIGNONDTTM, LASTSIGNOFFDTTM, LASTPSWDCHANGE, CREATEDETTM, LASTUPDDTTM FROM USERDEFN WHERE EMAILID = ?`, req.Email).Scan(&hash, &acctLock, &failedLogins, &uniqueID, &lastSignOn, &lastSignOff, &lastPwdChange, &createDetTm, &lastUpdTm)
 		if err == sql.ErrNoRows {
+			logrus.Errorf("Invalid email or password")
 			http.Error(w, "Invalid email or password", http.StatusUnauthorized)
 			return
 		} else if err != nil {
+			logrus.Errorf("DB error: %v", err)
 			http.Error(w, "DB error", http.StatusInternalServerError)
 			return
 		}
 		if acctLock != 0 {
+			logrus.Errorf("Account is locked")
 			http.Error(w, "Account is locked", http.StatusForbidden)
 			return
 		}
 		if bcrypt.CompareHashAndPassword([]byte(hash), []byte(req.Password)) != nil {
 			// Increment FAILEDLOGINS
 			db.Exec(`UPDATE USERDEFN SET FAILEDLOGINS = FAILEDLOGINS + 1 WHERE EMAILID = ?`, req.Email)
+			logrus.Errorf("Invalid email or password")
 			http.Error(w, "Invalid email or password", http.StatusUnauthorized)
 			return
 		}
@@ -572,6 +616,7 @@ func LogoutHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sid, err := r.Cookie("UTL_SESSION")
 		if err != nil || sid.Value == "" {
+			logrus.Errorf("No session")
 			http.Error(w, "No session", http.StatusUnauthorized)
 			return
 		}
@@ -604,6 +649,7 @@ func AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sid, err := r.Cookie("UTL_SESSION")
 		if err != nil || sid.Value == "" {
+			logrus.Errorf("Unauthorized")
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}

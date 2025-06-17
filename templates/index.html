@@ -186,8 +186,8 @@
       <a href="/plans.html" class="nav-link">Plans</a>
       <a href="/resources.html" class="nav-link">Resources</a>
       <a href="/help.html" class="nav-link">Help</a>
-      <a href="#" class="login-btn" onclick="openLoginModal(); return false;">Log in</a>
-      <a href="#" class="signup-btn" onclick="openRegisterModal(); return false;">Sign Up</a>
+      <a href="#" class="login-btn">Log in</a>
+      <a href="#" class="signup-btn">Sign Up</a>
     </nav>
   </header>
 
@@ -199,7 +199,7 @@
       <div class="input-row">
         <input type="text" id="originalURL" name="original_url" required />
         <button type="submit">Shorten</button>
-        <button type="button" id="newButton" onclick="resetForm()">New</button>
+        <button type="button" id="newButton" class="btn-new">New</button>
       </div>
 
       <label for="shortenedURL">Use this link</label>
@@ -208,8 +208,8 @@
       </div>
 
       <div class="actions" id="actionButtons">
-        <button type="button" onclick="copyURL()">📋 Copy</button>
-        <button type="button" onclick="generateQRCode()">🔳 QR</button>
+        <button type="button" class="btn-copy">📋 Copy</button>
+        <button type="button" class="btn-qrcode">🔳 QR</button>
       </div>
     </form>
 
@@ -227,31 +227,24 @@
   <script>
     document.getElementById('shortenForm').addEventListener('submit', async function (e) {
       e.preventDefault();
-
-      const originalInput = document.getElementById('originalURL');
-      const original = originalInput.value.trim();
-
-      const res = await fetch('/shorten', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ original_url: original })
-      });
-
-      if (!res.ok) {
+      const url = document.getElementById('originalURL').value;
+      try {
+        const res = await fetch('/shorten', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ original_url: url }),
+        });
+        if (!res.ok) {
+          throw new Error('Failed to shorten URL');
+        }
+        const data = await res.json();
+        document.getElementById('shortenedURL').value = window.location.origin + data.short_url;
+      } catch (error) {
         alert('Failed to shorten URL');
-        return;
+        console.error('Error:', error);
       }
-
-      const data = await res.json();
-      document.getElementById('shortenedURL').value = data.short_url;
-
-      // Disable input, show "New", show copy/QR
-      originalInput.disabled = true;
-      document.getElementById('newButton').style.display = 'inline-block';
-      document.getElementById('actionButtons').style.display = 'flex';
-
-      // Reload history after new URL is created
-      loadHistory();
     });
 
     function showCopiedMessage() {
@@ -316,9 +309,9 @@
             <div><strong>Use this link:</strong> <a href="${row.short_url}" target="_blank">${row.short_url}</a></div>
             <div style="margin-top:0.5rem;">
               <span class="qr-code-span"></span>
-              <button onclick="copyToClipboard('${row.short_url}')">Copy</button>
-              <button onclick="shareURL('${row.short_url}')">Share</button>
-              <button onclick="showQRCode('${row.short_url}')">QR Code</button>
+              <button class="btn-copy" data-url="${row.short_url}">Copy</button>
+              <button class="btn-share" data-url="${row.short_url}">Share</button>
+              <button class="btn-qrcode" data-url="${row.short_url}">QR Code</button>
             </div>
           </div>
         `;
@@ -389,34 +382,40 @@
                 <form method="" action="" accept-charset="UTF-8">
                   <input id="email" class="form-control" type="text" placeholder="Email" name="email">
                   <input id="password" class="form-control" type="password" placeholder="Password" name="password">
-                  <input class="btn btn-default btn-login" type="button" value="Login" onclick="loginAjax()">
+                  <input class="btn btn-default btn-login" type="button" value="Login">
                 </form>
               </div>
             </div>
           </div>
           <!-- Register Box (only visible in signup mode) -->
           <div class="box registerBox" style="display:none;">
-            <div class="content">
-              <div class="form">
-                <form method="" html="{:multipart=>true}" data-remote="true" action="" accept-charset="UTF-8">
-                  <input id="email" class="form-control" type="text" placeholder="Email" name="email">
-                  <input id="password" class="form-control" type="password" placeholder="Password" name="password">
-                  <input id="password_confirmation" class="form-control" type="password" placeholder="Repeat Password" name="password_confirmation">
-                  <input class="btn btn-default btn-register" type="button" value="Create account" name="commit">
-                </form>
-              </div>
+            <div class="form">
+              <div class="error"></div>
+              <input id="reg_email" class="form-control" type="text" placeholder="Email" name="email">
+              <input id="reg_password" class="form-control" type="password" placeholder="Password" name="password">
+              <input id="password_confirmation" class="form-control" type="password" placeholder="Repeat Password" name="password_confirmation">
+              <input class="btn btn-default btn-register" type="button" value="Create account">
+            </div>
+          </div>
+          <!-- OTP Box (appears after registration) -->
+          <div class="box otpBox" style="display:none;">
+            <div class="form">
+              <div class="error"></div>
+              <input id="otp_email" class="form-control" type="text" placeholder="Email" name="email" readonly>
+              <input id="otp_code" class="form-control" type="text" placeholder="Enter OTP" name="otp">
+              <input class="btn btn-default btn-verify-otp" type="button" value="Verify OTP">
             </div>
           </div>
         </div>
         <div class="modal-footer">
           <div class="forgot login-footer">
             <span>Looking to
-              <a href="javascript: showRegisterForm();">create an account</a>
+              <a href="#" class="show-register">create an account</a>
               ?</span>
           </div>
           <div class="forgot register-footer" style="display:none">
             <span>Already have an account?</span>
-            <a href="javascript: showLoginForm();">Login</a>
+            <a href="#" class="show-login">Login</a>
           </div>
         </div>
       </div>
