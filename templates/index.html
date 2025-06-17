@@ -341,6 +341,39 @@
 
     // Load history on page load
     window.addEventListener('DOMContentLoaded', loadHistory);
+
+    function updateNav() {
+      fetch('/api/session')
+        .then(res => res.json())
+        .then(data => {
+          const signInBtn = document.querySelector('.login-btn');
+          const signUpBtn = document.querySelector('.signup-btn');
+          if (data.logged_in) {
+            signInBtn.textContent = 'Sign Out';
+            signInBtn.classList.add('sign-out');
+            signUpBtn.style.display = 'none';
+          } else {
+            signInBtn.textContent = 'Log in';
+            signInBtn.classList.remove('sign-out');
+            signUpBtn.style.display = '';
+          }
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+      updateNav();
+      document.body.addEventListener('click', function(e) {
+        if (e.target.classList.contains('sign-out')) {
+          e.preventDefault();
+          fetch('/api/logout', { method: 'POST' })
+            .then(res => res.json())
+            .then(() => {
+              updateNav();
+              location.reload();
+            });
+        }
+      });
+    });
   </script>
 
   <!-- Login/Register Modal HTML -->

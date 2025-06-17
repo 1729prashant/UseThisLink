@@ -84,6 +84,7 @@ func main() {
 	r.HandleFunc("/api/verify-otp", api.VerifyOTPHandler(db)).Methods("POST")
 	r.HandleFunc("/api/login", api.LoginHandler(db)).Methods("POST")
 	r.HandleFunc("/api/logout", api.LogoutHandler(db)).Methods("POST")
+	r.HandleFunc("/api/session", api.SessionStatusHandler(db)).Methods("GET")
 
 	r.HandleFunc("/shorten", api.ShortenHandler(db)).Methods("POST")
 	r.HandleFunc("/stats/{shortcode}", api.StatsHandler(db)).Methods("GET")

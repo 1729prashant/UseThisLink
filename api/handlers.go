@@ -658,3 +658,24 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
+
+// SessionStatusHandler returns login status and email
+func SessionStatusHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		sid, err := r.Cookie("UTL_SESSION")
+		if err != nil || sid.Value == "" {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"logged_in": false}`))
+			return
+		}
+		var email string
+		_ = db.QueryRow(`SELECT user_email FROM sessions WHERE session_id = ?`, sid.Value).Scan(&email)
+		if email != "" {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"logged_in": true, "email": "` + email + `"}`))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"logged_in": false}`))
+	}
+}
