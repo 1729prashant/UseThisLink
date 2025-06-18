@@ -108,7 +108,12 @@ function registerAjax() {
         error: function(xhr, status, error) {
             console.log("Registration failed:", error);
             console.log("Response:", xhr.responseText);
-            $(".registerBox .error").fadeIn(400).html(xhr.responseJSON?.error || "Registration failed");
+            var errMsg = xhr.responseJSON?.error || "Registration failed";
+            if (xhr.status === 409 && errMsg.includes("already exists")) {
+                $(".registerBox .error").fadeIn(400).html('<span style="color:#d32f2f;font-style:italic;">' + errMsg + '</span>');
+            } else {
+                $(".registerBox .error").fadeIn(400).html(errMsg);
+            }
         }
     });
 }

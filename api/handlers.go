@@ -451,7 +451,9 @@ func RegisterHandler(db *sql.DB) http.HandlerFunc {
 		}
 		if exists > 0 {
 			logrus.Errorf("User already exists")
-			http.Error(w, "User already exists", http.StatusConflict)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusConflict)
+			json.NewEncoder(w).Encode(map[string]string{"error": "An account with this email already exists. Please log in or use a different email."})
 			return
 		}
 		// Generate OTP
