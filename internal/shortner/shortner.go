@@ -45,7 +45,7 @@ func toBase62(num uint64) string {
 }
 
 // manage collisions
-func StoreURL(db *sql.DB, sessionID, originalURL string) (string, error) {
+func StoreURL(db *sql.DB, sessionID, userEmail, originalURL string) (string, error) {
 
 	baseURL := os.Getenv("BASE_URL")
 	if baseURL == "" {
@@ -58,9 +58,9 @@ func StoreURL(db *sql.DB, sessionID, originalURL string) (string, error) {
 		expiry := time.Now().Add(48 * time.Hour).Format("2006-01-02 15:04:05")
 		_, err := db.Exec(
 			`INSERT OR IGNORE INTO url_mappings 
-			(short_url, original_url, session_id, expiry_date, is_logged_in, user_email) 
+			(short_url, original_url, session_id, user_email, expiry_date, is_logged_in) 
 			VALUES (?, ?, ?, ?, ?, ?)`,
-			shortcode, originalURL, sessionID, expiry, false, ' ')
+			shortcode, originalURL, sessionID, userEmail, expiry, false)
 
 		if err == nil {
 			// return the full short URL to the user

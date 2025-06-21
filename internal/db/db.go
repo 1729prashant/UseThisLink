@@ -18,14 +18,15 @@ func InitDB(dbPath string) (*sql.DB, error) {
 
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS url_mappings (
-			short_url TEXT PRIMARY KEY,
+			short_url TEXT NOT NULL,
 			original_url TEXT NOT NULL,
 			session_id TEXT,
+			user_email TEXT,
 			visits INTEGER DEFAULT 0,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			expiry_date DATETIME,
 			is_logged_in BOOLEAN DEFAULT 0,
-			user_email TEXT
+			PRIMARY KEY (short_url, session_id, user_email)
 		);
 
 		CREATE TABLE IF NOT EXISTS sessions (

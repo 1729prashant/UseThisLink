@@ -129,6 +129,11 @@ func ShortenHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		sid := r.Context().Value(mw.SessionKey).(string)
+		var userEmail string
+		cookie, err := r.Cookie("UTL_SESSION")
+		if err == nil && cookie.Value != "" {
+			_ = db.QueryRow(`SELECT user_email FROM sessions WHERE session_id = ?`, cookie.Value).Scan(&userEmail)
+		}
 		// Extract IP address only (remove port)
 		host, _, err := net.SplitHostPort(r.RemoteAddr)
 		if err != nil {
@@ -137,15 +142,12 @@ func ShortenHandler(db *sql.DB) http.HandlerFunc {
 		// 1-time insert session row (best-effort; ignore error if exists)
 		db.Exec(`INSERT OR IGNORE INTO sessions (session_id, user_agent, ip_address) VALUES (?, ?, ?)`, sid, r.UserAgent(), host)
 
-		shortURL, err := shortner.StoreURL(db, sid, rawURL)
+		shortURL, err := shortner.StoreURL(db, sid, userEmail, rawURL)
 		if err != nil {
 			logrus.Errorf("Failed to generate short URL: %v", err)
 			http.Error(w, "Could not generate short URL", http.StatusInternalServerError)
 			return
 		}
-
-		// Add /s/ prefix to the short URL
-		shortURL = "/s/" + shortURL
 
 		resp := shortenResponse{
 			ShortURL: shortURL,
@@ -324,11 +326,26 @@ type urlHistoryResponse struct {
 func HistoryHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sid := r.Context().Value(mw.SessionKey).(string)
+		var userEmail string
+		cookie, err := r.Cookie("UTL_SESSION")
+		if err == nil && cookie.Value != "" {
+			_ = db.QueryRow(`SELECT user_email FROM sessions WHERE session_id = ?`, cookie.Value).Scan(&userEmail)
+		}
 		baseURL := os.Getenv("BASE_URL")
-		rows, err := db.Query(`
-			SELECT original_url, short_url, expiry_date, is_logged_in, user_email
-			FROM url_mappings WHERE session_id = ? ORDER BY created_at DESC
-		`, sid)
+		var rows *sql.Rows
+		if userEmail != "" {
+			// Show all URLs for this user_email or for this session_id (pre-login)
+			rows, err = db.Query(`
+				SELECT original_url, short_url, expiry_date, is_logged_in, user_email
+				FROM url_mappings WHERE user_email = ? OR session_id = ? ORDER BY created_at DESC
+			`, userEmail, sid)
+		} else {
+			// Not logged in: show only session_id URLs
+			rows, err = db.Query(`
+				SELECT original_url, short_url, expiry_date, is_logged_in, user_email
+				FROM url_mappings WHERE session_id = ? ORDER BY created_at DESC
+			`, sid)
+		}
 		if err != nil {
 			logrus.Errorf("Failed to fetch history: %v", err)
 			http.Error(w, "Failed to fetch history", http.StatusInternalServerError)
@@ -607,6 +624,10 @@ func LoginHandler(db *sql.DB) http.HandlerFunc {
 		}
 		// Update session to associate with user
 		_, _ = db.Exec(`UPDATE sessions SET user_email = ?, created_at = ? WHERE session_id = ?`, req.Email, time.Now(), sessionID)
+
+		// Migrate all url_mappings for this session_id with empty user_email to this user_email
+		_, _ = db.Exec(`UPDATE url_mappings SET user_email = ? WHERE session_id = ? AND (user_email IS NULL OR user_email = '')`, req.Email, sessionID)
+
 		setSessionCookie(w, sessionID)
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"status":"logged_in"}`))

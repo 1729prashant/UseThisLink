@@ -240,7 +240,11 @@
           throw new Error('Failed to shorten URL');
         }
         const data = await res.json();
-        document.getElementById('shortenedURL').value = window.location.origin + data.short_url;
+        document.getElementById('shortenedURL').value = data.short_url;
+        document.getElementById('newButton').style.display = 'inline-block';
+        document.getElementById('actionButtons').style.display = 'flex';
+        document.getElementById('originalURL').disabled = true;
+        loadHistory();
       } catch (error) {
         alert('Failed to shorten URL');
         console.error('Error:', error);
