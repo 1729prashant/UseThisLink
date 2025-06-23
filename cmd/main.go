@@ -63,6 +63,24 @@ func main() {
 		http.ServeFile(w, r, "templates/login.html")
 	}).Methods("GET")
 
+	// Serve tos.html
+	r.HandleFunc("/tos.html", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "templates/tos.html")
+	}).Methods("GET")
+
+	// Serve privacy.html
+	r.HandleFunc("/privacy.html", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "templates/privacy.html")
+	}).Methods("GET")
+
+	// Serve index.html on "/index.html"
+	r.HandleFunc("/index.html", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		if err := tmpl.Execute(w, nil); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	}).Methods("GET")
+
 	// Serve index.html on "/"
 	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
