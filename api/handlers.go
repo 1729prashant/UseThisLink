@@ -128,6 +128,14 @@ func ShortenHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		// Prevent shortening URLs that contain the service's own BASE_URL
+		baseURL := os.Getenv("BASE_URL")
+		if baseURL != "" && (strings.Contains(rawURL, baseURL) || strings.Contains(parsed.Host, strings.TrimPrefix(strings.TrimPrefix(baseURL, "http://"), "https://"))) {
+			logrus.Warnf("Attempt to shorten a URL containing BASE_URL: %s", rawURL)
+			http.Error(w, "You cannot shorten URLs that point to this service.", http.StatusBadRequest)
+			return
+		}
+
 		sid := r.Context().Value(mw.SessionKey).(string)
 		var userEmail string
 		cookie, err := r.Cookie("UTL_SESSION")
