@@ -3,7 +3,54 @@
 Name: UseThisLink <br>
 Goal: A scalable, production-ready URL shortening service with click tracking and basic analytics, built in Go with SQLite.
 
+---
 
+## Docker Compose Setup
+
+To run all services locally with Docker Compose:
+
+```sh
+docker-compose up --build
+```
+
+### Service URLs and Ports
+
+| Service      | URL/Port           | Environment Variables (default)                |
+|--------------|--------------------|-----------------------------------------------|
+| Gateway      | http://localhost:8080 | PORT=8080, LINK_SERVICE_URL, ANALYTICS_SERVICE_URL, USER_SERVICE_URL |
+| Link         | http://localhost:8081 | PORT=8081, LINK_DB_PATH, BASE_URL             |
+| Analytics    | http://localhost:8082 | PORT=8082, ANALYTICS_DB_PATH, BASE_URL        |
+| User/Auth    | http://localhost:8083 | PORT=8083, USER_DB_PATH, BASE_URL, SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS |
+
+- All services use `BASE_URL=http://localhost:8080` for generating links.
+- Database files are stored in named Docker volumes for persistence.
+
+### SMTP Configuration (User Service)
+- `SMTP_HOST`: SMTP server hostname (e.g., smtp.example.com)
+- `SMTP_PORT`: SMTP server port (e.g., 587)
+- `SMTP_USER`: SMTP username
+- `SMTP_PASS`: SMTP password
+
+---
+
+### Example .env (for local dev, not used in Docker Compose)
+```
+PORT=8080
+BASE_URL=http://localhost:8080
+DB_PATH=./internal/db/usethislink.db
+```
+
+---
+
+### API Examples
+
+```
+curl -X POST -d '{"original_url": "https://example.com"}' http://localhost:8080/shorten
+curl http://localhost:8080/r/Ab1XyZ # Redirects
+curl http://localhost:8080/stats/Ab1XyZ
+```
+
+---
 
 ### Current State
 

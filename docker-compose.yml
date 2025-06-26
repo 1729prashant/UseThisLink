@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  gateway:
+    build: ./services/gateway
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - LINK_SERVICE_URL=http://link:8081
+      - ANALYTICS_SERVICE_URL=http://analytics:8082
+      - USER_SERVICE_URL=http://user:8083
+    depends_on:
+      - link
+      - analytics
+      - user
+    volumes:
+      - ./static:/app/static
+      - ./templates:/app/templates
+
+  link:
+    build: ./services/link
+    environment:
+      - PORT=8081
+      - LINK_DB_PATH=/data/usethislink_link.db
+      - BASE_URL=http://localhost:8080
+    volumes:
+      - link-db:/data
+
+  analytics:
+    build: ./services/analytics
+    environment:
+      - PORT=8082
+      - ANALYTICS_DB_PATH=/data/usethislink_analytics.db
+      - BASE_URL=http://localhost:8080
+    volumes:
+      - analytics-db:/data
+
+  user:
+    build: ./services/user
+    environment:
+      - PORT=8083
+      - USER_DB_PATH=/data/usethislink_user.db
+      - BASE_URL=http://localhost:8080
+      - SMTP_HOST=smtp.example.com
+      - SMTP_PORT=587
+      - SMTP_USER=youruser@example.com
+      - SMTP_PASS=yourpassword
+    volumes:
+      - user-db:/data
+
+volumes:
+  link-db:
+  analytics-db:
+  user-db: 
