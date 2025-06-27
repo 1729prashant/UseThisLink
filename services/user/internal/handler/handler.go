@@ -279,3 +279,29 @@ func SessionStatusHandler(db *sql.DB) http.HandlerFunc {
 		w.Write([]byte(`{"logged_in": false}`))
 	}
 }
+
+func UserInfoHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		email := r.URL.Query().Get("email")
+		if email == "" {
+			http.Error(w, "Missing email", http.StatusBadRequest)
+			return
+		}
+		var uniqueid, fullname string
+		err := db.QueryRow(`SELECT UNIQUEID, FULLNAMEDESC FROM USERDEFN WHERE EMAILID = ?`, email).Scan(&uniqueid, &fullname)
+		if err == sql.ErrNoRows {
+			http.Error(w, "User not found", http.StatusNotFound)
+			return
+		} else if err != nil {
+			http.Error(w, "DB error", http.StatusInternalServerError)
+			return
+		}
+		resp := map[string]interface{}{
+			"email":    email,
+			"uniqueid": uniqueid,
+			"fullname": fullname,
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}
+}

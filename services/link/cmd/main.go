@@ -12,11 +12,7 @@ import (
 )
 
 func main() {
-	dbPath := os.Getenv("LINK_DB_PATH")
-	if dbPath == "" {
-		dbPath = "usethislink_link.db"
-	}
-	dbConn, err := db.InitDB(dbPath)
+	dbConn, err := db.InitDBFromEnv()
 	if err != nil {
 		log.Fatalf("Failed to initialize DB: %v", err)
 	}
@@ -24,7 +20,7 @@ func main() {
 
 	r := mux.NewRouter()
 	r.HandleFunc("/shorten", handler.ShortenHandler(dbConn)).Methods("POST")
-	r.HandleFunc("/r/{shortcode}", handler.RedirectHandler(dbConn)).Methods("GET")
+	r.HandleFunc("/s/{shortcode}", handler.RedirectHandler(dbConn)).Methods("GET")
 
 	port := os.Getenv("PORT")
 	if port == "" {

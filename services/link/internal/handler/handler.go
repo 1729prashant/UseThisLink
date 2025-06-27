@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -78,7 +79,29 @@ func RedirectHandler(db *sql.DB) http.HandlerFunc {
 			http.NotFound(w, r)
 			return
 		}
-		// TODO: analytics, session, etc. for distributed context
+		// Send analytics event to Analytics service (async)
+		go func() {
+			analyticsURL := os.Getenv("ANALYTICS_SERVICE_URL")
+			if analyticsURL == "" {
+				analyticsURL = "http://analytics:8082"
+			}
+			payload := map[string]interface{}{
+				"short_url":  shortcode,
+				"session_id": r.Header.Get("X-Session-ID"),
+				"user_email": r.Header.Get("X-User-Email"),
+				"ip_address": r.RemoteAddr,
+				"user_agent": r.UserAgent(),
+				"referrer":   r.Referer(),
+				"event":      "redirect",
+			}
+			b, _ := json.Marshal(payload)
+			req, _ := http.NewRequest("POST", analyticsURL+"/log", bytes.NewBuffer(b))
+			req.Header.Set("Content-Type", "application/json")
+			// Pass session/user headers
+			req.Header.Set("X-Session-ID", r.Header.Get("X-Session-ID"))
+			req.Header.Set("X-User-Email", r.Header.Get("X-User-Email"))
+			_, _ = http.DefaultClient.Do(req)
+		}()
 		http.Redirect(w, r, longURL, http.StatusFound)
 	}
 }

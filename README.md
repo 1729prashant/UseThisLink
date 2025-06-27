@@ -1,48 +1,71 @@
 # UseThisLink
 
-Name: UseThisLink <br>
-Goal: A scalable, production-ready URL shortening service with click tracking and basic analytics, built in Go with SQLite.
+A scalable, production-ready URL shortening service with click tracking, analytics, and user authentication, built in Go with a distributed microservices architecture and PostgreSQL.
 
 ---
 
-## Docker Compose Setup
+## Prerequisites
 
-To run all services locally with Docker Compose:
-
-```sh
-docker-compose up --build
-```
-
-### Service URLs and Ports
-
-| Service      | URL/Port           | Environment Variables (default)                |
-|--------------|--------------------|-----------------------------------------------|
-| Gateway      | http://localhost:8080 | PORT=8080, LINK_SERVICE_URL, ANALYTICS_SERVICE_URL, USER_SERVICE_URL |
-| Link         | http://localhost:8081 | PORT=8081, LINK_DB_PATH, BASE_URL             |
-| Analytics    | http://localhost:8082 | PORT=8082, ANALYTICS_DB_PATH, BASE_URL        |
-| User/Auth    | http://localhost:8083 | PORT=8083, USER_DB_PATH, BASE_URL, SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS |
-
-- All services use `BASE_URL=http://localhost:8080` for generating links.
-- Database files are stored in named Docker volumes for persistence.
-
-### SMTP Configuration (User Service)
-- `SMTP_HOST`: SMTP server hostname (e.g., smtp.example.com)
-- `SMTP_PORT`: SMTP server port (e.g., 587)
-- `SMTP_USER`: SMTP username
-- `SMTP_PASS`: SMTP password
+- **Docker** and **Docker Compose** (for local development and orchestration)
+- **Go 1.21+** (for local development, optional if using Docker only)
+- **Make** (optional, for local test/dev convenience)
 
 ---
 
-### Example .env (for local dev, not used in Docker Compose)
-```
-PORT=8080
-BASE_URL=http://localhost:8080
-DB_PATH=./internal/db/usethislink.db
-```
+## Architecture Overview
+
+- **API Gateway**: Entry point for all client requests, routes to internal services, serves static files and HTML.
+- **Link Service**: Handles URL shortening and redirection.
+- **Analytics Service**: Tracks clicks, stores analytics, exposes stats endpoints.
+- **User Service**: Handles registration, login, session management, and user info.
+- **PostgreSQL**: Shared DB instance, each service uses its own schema for isolation.
 
 ---
 
-### API Examples
+## Quickstart (Docker Compose)
+
+1. **Clone the repo**
+
+2. **Run all services**
+   ```sh
+   docker-compose up --build
+   ```
+   This will build and start all services and a Postgres database.
+
+3. **Access the app**
+   - Web UI: [http://localhost:8080](http://localhost:8080)
+   - API Gateway: [http://localhost:8080](http://localhost:8080)
+   - Link Service: [http://localhost:8081](http://localhost:8081)
+   - Analytics Service: [http://localhost:8082](http://localhost:8082)
+   - User Service: [http://localhost:8083](http://localhost:8083)
+
+4. **Run tests** (from project root):
+   ```sh
+   docker-compose run link go test ./...
+   docker-compose run analytics go test ./...
+   docker-compose run user go test ./...
+   ```
+
+---
+
+## Configuration & Environment Variables
+
+All configuration is managed via environment variables (see `docker-compose.yml`).
+
+| Service      | Key Variables (default)                                                                 |
+|--------------|----------------------------------------------------------------------------------------|
+| Gateway      | PORT=8080, LINK_SERVICE_URL, ANALYTICS_SERVICE_URL, USER_SERVICE_URL                   |
+| Link         | PORT=8081, PGHOST, PGPORT, PGUSER, PGPASSWORD, PGDATABASE, PGSCHEMA=link, BASE_URL     |
+| Analytics    | PORT=8082, PGHOST, PGPORT, PGUSER, PGPASSWORD, PGDATABASE, PGSCHEMA=analytics, BASE_URL|
+| User         | PORT=8083, PGHOST, PGPORT, PGUSER, PGPASSWORD, PGDATABASE, PGSCHEMA=user, BASE_URL, SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS |
+| Postgres     | POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB                                          |
+
+- **BASE_URL** should be set to the Gateway's public URL (e.g., `http://localhost:8080`).
+- **SMTP_*** variables are required for email/OTP in the User service.
+
+---
+
+## API Examples
 
 ```
 curl -X POST -d '{"original_url": "https://example.com"}' http://localhost:8080/shorten
@@ -52,48 +75,47 @@ curl http://localhost:8080/stats/Ab1XyZ
 
 ---
 
-### Current State
-
-UNIX ONLY FOR NOW, the env file is not included in this repo currently
-
-1. Clone the repo
-
-2. create an .env file and add the following
-
-	```
-	PORT=3000
-	BASE_URL=http://localhost:3000
-	DB_PATH=./internal/db/usethislink.db
-	```
-
-3. Run app locally
-```
-go run cmd/main.go
-```
-
-4. Open your browser and go to: http://localhost:3000/
-
-**Testing via terminal**
+## Directory Structure
 
 ```
-curl -X POST http://localhost:3000/shorten \
-  -H "Content-Type: application/json" \
-  -d '{"original_url": "https://example.com"}'
+UseThisLink/
+  services/
+    gateway/
+    link/
+    analytics/
+    user/
+  static/
+  templates/
+  docker-compose.yml
+  README.md
+  DesignDocument.md
 ```
 
+---
 
-Response should contain something like:
+## Development
 
-```
-{"short_url": "http://localhost:3000/6cXdnlhM"}
-```
+- Each service is a standalone Go app with its own Dockerfile.
+- All inter-service communication is via HTTP (never direct Go calls or shared DB access).
+- Each service manages its own DB schema and tables.
+- To run a service locally (with Docker Compose running Postgres):
+  ```sh
+  cd services/link
+  go run cmd/main.go
+  # or build and run the Docker image
+  ```
 
-**Work in Progress**
+---
 
-1. Handle multiple sessions/track url creation per sessions
-2. Add analytics
-3. Sign Up/Login features
-4. UI Changes
-5. Simpler Packaging/Installation
-6. Monetisation related features
-7. CI/CD pipelines
+## Production Notes
+
+- Use a managed Postgres instance for production.
+- Set strong, unique secrets for all environment variables.
+- Use HTTPS and secure cookies in production.
+- Add monitoring, logging, and CI/CD as needed.
+
+---
+
+## License
+
+GPLv3. See LICENSE for details.

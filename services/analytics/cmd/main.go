@@ -12,11 +12,7 @@ import (
 )
 
 func main() {
-	dbPath := os.Getenv("ANALYTICS_DB_PATH")
-	if dbPath == "" {
-		dbPath = "usethislink_analytics.db"
-	}
-	dbConn, err := db.InitDB(dbPath)
+	dbConn, err := db.InitDBFromEnv()
 	if err != nil {
 		log.Fatalf("Failed to initialize DB: %v", err)
 	}
@@ -25,6 +21,7 @@ func main() {
 	r := mux.NewRouter()
 	r.HandleFunc("/stats/{shortcode}", handler.StatsHandler(dbConn)).Methods("GET")
 	r.HandleFunc("/history", handler.HistoryHandler(dbConn)).Methods("GET")
+	r.HandleFunc("/log", handler.LogHandler(dbConn)).Methods("POST")
 
 	port := os.Getenv("PORT")
 	if port == "" {

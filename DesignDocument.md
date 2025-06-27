@@ -93,7 +93,7 @@ usethislink/
 - JSON errors: `{"error": "message"}`
 - **Logging**: 
 - Use `logrus` to log to `logs/usethislink.log`
-- Log requests (method, path, duration) and key actions (e.g., “Shortened URL: Ab1XyZ”)
+- Log requests (method, path, duration) and key actions (e.g., "Shortened URL: Ab1XyZ")
 - **Middleware**: Wrap handlers to log every request
 
 ---
@@ -113,7 +113,7 @@ usethislink/
 
 ### 6. Deployment Prep
 **What**: Package and deploy the app.  
-**Why**: Proves it’s not just a toy—ready for the real world.  
+**Why**: Proves it's not just a toy—ready for the real world.  
 **Tasks**:  
 - **Config**: 
 - `.env` for `PORT`, `DB_PATH`, `BASE_URL`
@@ -137,7 +137,7 @@ usethislink/
 **Why**: Makes it recruiter-ready and shareable.  
 **Tasks**:  
 - **README.md**: 
-- Purpose: “Production-grade URL shortener with analytics”
+- Purpose: "Production-grade URL shortener with analytics"
 - Setup, API examples:
   ```
   curl -X POST -d '{"url": "https://example.com"}' http://localhost:8080/shorten
@@ -151,11 +151,11 @@ usethislink/
 Familiarity with Docker:
 All services will run in local Docker containers. Ensure you and your team are comfortable with Docker Compose for multi-container orchestration.
 Automated Tests:
-If you don’t have tests, add basic ones. Refactoring without tests is risky.
+If you don't have tests, add basic ones. Refactoring without tests is risky.
 CI Pipeline (Optional but recommended):
 Set up a simple CI to run tests and build Docker images.
 Database Migration Plan:
-You’re using SQLite. Decide on a networked DB (e.g., Postgres) and plan for schema migration.
+You're using SQLite. Decide on a networked DB (e.g., Postgres) and plan for schema migration.
 Service Communication:
 Decide on REST/gRPC for inter-service calls. REST is easier for a first split.
 2. Analyze Your Current Codebase Structure
@@ -215,11 +215,11 @@ internal/mw/session.go	/services/user/	Session/user logic
 api/handlers.go	Split among services	Move handler logic to relevant service
 internal/db/	Each service /db/	Each service manages its own DB access
 5. What NOT to Do
-Don’t try to split everything at once.
+Don't try to split everything at once.
 Start with one service (e.g., Link Service), get it running in Docker, then move to the next.
-Don’t share internal Go packages between services.
+Don't share internal Go packages between services.
 If you need shared code, make a /pkg/ or a Go module.
-Don’t keep SQLite for distributed services.
+Don't keep SQLite for distributed services.
 Move to a networked DB before splitting.
 6. Next Steps Checklist
 [ ] Set up Docker Compose for local orchestration.
@@ -230,3 +230,189 @@ Move to a networked DB before splitting.
 [ ] Implement inter-service communication (REST/gRPC).
 [ ] Add an API Gateway.
 [ ] Update tests to work with new structure.
+
+# UseThisLink: Distributed Microservices Design
+
+## System Architecture (Mermaid Diagram)
+
+```mermaid
+graph TD
+  Client["Client (Browser/API)"]
+  Gateway["API Gateway\n:8080"]
+  Link["Link Service\n:8081\nSchema: link"]
+  Analytics["Analytics Service\n:8082\nSchema: analytics"]
+  User["User Service\n:8083\nSchema: user"]
+  Postgres[("PostgreSQL\n(usethislink DB)")]
+
+  Client --> Gateway
+  Gateway --> Link
+  Gateway --> Analytics
+  Gateway --> User
+  Link <--> Analytics
+  Analytics <--> User
+  Link -- "link schema" --> Postgres
+  Analytics -- "analytics schema" --> Postgres
+  User -- "user schema" --> Postgres
+```
+
+---
+
+## Database ERD (Mermaid)
+
+```mermaid
+erDiagram
+  link.url_mappings {
+    TEXT short_url PK
+    TEXT original_url
+    TEXT session_id
+    TEXT user_email
+    INTEGER visits
+    TIMESTAMP created_at
+    TIMESTAMP expiry_date
+    BOOLEAN is_logged_in
+  }
+
+  analytics.url_access_logs {
+    SERIAL id PK
+    TEXT short_url
+    TEXT session_id
+    TEXT ip_address
+    TEXT user_agent
+    TEXT referrer
+    TIMESTAMP accessed_at
+    TEXT visit_type
+    TEXT city
+    TEXT country
+    TEXT browser
+    TEXT device
+    TEXT operating_system
+    TIMESTAMP deleted_at
+  }
+
+  analytics.link_analytics {
+    TEXT short_url PK
+    INTEGER total_visits
+    INTEGER unique_visitors
+    INTEGER redirect_count
+    INTEGER preview_count
+    TEXT country_counts
+    TEXT browser_counts
+    TEXT device_counts
+    TIMESTAMP last_updated
+  }
+
+  user.USERDEFN {
+    TEXT EMAILID PK
+    TEXT UNIQUEID
+    TEXT FULLNAMEDESC
+    TEXT USERPSWD
+    TEXT LANGUAGE_CODE
+    TEXT CURRENCY_CODE
+    TIMESTAMP LASTPSWDCHANGE
+    INTEGER ACCTLOCK
+    INTEGER ISSIGNEDIN
+    TEXT DEFAULTHOME
+    INTEGER FAILEDLOGINS
+    TIMESTAMP CREATEDETTM
+    TIMESTAMP LASTSIGNONDTTM
+    TIMESTAMP LASTSIGNOFFDTTM
+    TIMESTAMP LASTUPDDTTM
+  }
+
+  user.pending_registrations {
+    TEXT EMAILID PK
+    TEXT OTP
+    TIMESTAMP OTP_EXPIRES_AT
+    TEXT USERPSWD
+    TEXT UNIQUEID
+    TIMESTAMP CREATED_AT
+  }
+
+  user.sessions {
+    TEXT session_id PK
+    TEXT user_agent
+    TEXT ip_address
+    TEXT user_email
+    TIMESTAMP created_at
+  }
+
+  link.url_mappings ||--o{ analytics.url_access_logs : "short_url"
+  link.url_mappings ||--o{ analytics.link_analytics : "short_url"
+  user.USERDEFN ||--o{ user.sessions : "EMAILID to user_email"
+  user.USERDEFN ||--o{ user.pending_registrations : "EMAILID"
+```
+
+---
+
+## Table & Column Explanations
+
+### link.url_mappings
+- **short_url**: (PK) The unique shortcode for the shortened URL.
+- **original_url**: The original, long URL.
+- **session_id**: Session that created the link (anonymous or logged-in).
+- **user_email**: Email of the user who created the link (if logged in).
+- **visits**: Number of times the link was visited.
+- **created_at**: Timestamp when the link was created.
+- **expiry_date**: When the link expires (optional).
+- **is_logged_in**: Whether the creator was logged in.
+
+### analytics.url_access_logs
+- **id**: (PK) Auto-incremented log entry ID.
+- **short_url**: The shortcode that was accessed.
+- **session_id**: Session of the visitor.
+- **ip_address**: IP address of the visitor.
+- **user_agent**: Browser user agent string.
+- **referrer**: HTTP referrer.
+- **accessed_at**: Timestamp of access.
+- **visit_type**: 'redirect' or 'preview'.
+- **city/country**: Geolocation info.
+- **browser/device/operating_system**: Parsed device info.
+- **deleted_at**: Soft-delete timestamp (optional).
+
+### analytics.link_analytics
+- **short_url**: (PK) The shortcode being aggregated.
+- **total_visits**: Total number of visits.
+- **unique_visitors**: Unique session/user count.
+- **redirect_count**: Number of redirects.
+- **preview_count**: Number of preview page views.
+- **country_counts/browser_counts/device_counts**: JSON blobs with per-country/browser/device stats.
+- **last_updated**: Last time stats were updated.
+
+### user.USERDEFN
+- **EMAILID**: (PK) User's email address.
+- **UNIQUEID**: Unique user identifier (UUID).
+- **FULLNAMEDESC**: Full name/description.
+- **USERPSWD**: Hashed password.
+- **LANGUAGE_CODE**: Preferred language.
+- **CURRENCY_CODE**: Preferred currency.
+- **LASTPSWDCHANGE**: Last password change timestamp.
+- **ACCTLOCK**: Account lock status (0/1).
+- **ISSIGNEDIN**: Is user currently signed in (0/1).
+- **DEFAULTHOME**: Default home page/route.
+- **FAILEDLOGINS**: Failed login attempts.
+- **CREATEDETTM**: Account creation timestamp.
+- **LASTSIGNONDTTM**: Last sign-on timestamp.
+- **LASTSIGNOFFDTTM**: Last sign-off timestamp.
+- **LASTUPDDTTM**: Last update timestamp.
+
+### user.pending_registrations
+- **EMAILID**: (PK) Email for pending registration.
+- **OTP**: One-time password for verification.
+- **OTP_EXPIRES_AT**: When the OTP expires.
+- **USERPSWD**: Hashed password (pending).
+- **UNIQUEID**: UUID for the pending user.
+- **CREATED_AT**: When the registration was started.
+
+### user.sessions
+- **session_id**: (PK) Session identifier (cookie value).
+- **user_agent**: Browser user agent string.
+- **ip_address**: IP address of the session.
+- **user_email**: Email of the logged-in user (if any).
+- **created_at**: When the session was created.
+
+---
+
+## Notes
+- Each service manages its own schema and tables for isolation and security.
+- All inter-service communication is via HTTP, never direct DB access.
+- The ERD shows logical relationships; foreign keys may not be enforced at the DB level for cross-schema links.

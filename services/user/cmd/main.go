@@ -12,22 +12,19 @@ import (
 )
 
 func main() {
-	dbPath := os.Getenv("USER_DB_PATH")
-	if dbPath == "" {
-		dbPath = "usethislink_user.db"
-	}
-	dbConn, err := db.InitDB(dbPath)
+	dbConn, err := db.InitDBFromEnv()
 	if err != nil {
 		log.Fatalf("Failed to initialize DB: %v", err)
 	}
 	defer dbConn.Close()
 
 	r := mux.NewRouter()
-	r.HandleFunc("/register", handler.RegisterHandler(dbConn)).Methods("POST")
-	r.HandleFunc("/verify-otp", handler.VerifyOTPHandler(dbConn)).Methods("POST")
-	r.HandleFunc("/login", handler.LoginHandler(dbConn)).Methods("POST")
-	r.HandleFunc("/logout", handler.LogoutHandler(dbConn)).Methods("POST")
-	r.HandleFunc("/session", handler.SessionStatusHandler(dbConn)).Methods("GET")
+	r.HandleFunc("/api/register", handler.RegisterHandler(dbConn)).Methods("POST")
+	r.HandleFunc("/api/verify-otp", handler.VerifyOTPHandler(dbConn)).Methods("POST")
+	r.HandleFunc("/api/login", handler.LoginHandler(dbConn)).Methods("POST")
+	r.HandleFunc("/api/logout", handler.LogoutHandler(dbConn)).Methods("POST")
+	r.HandleFunc("/api/session", handler.SessionStatusHandler(dbConn)).Methods("GET")
+	r.HandleFunc("/api/userinfo", handler.UserInfoHandler(dbConn)).Methods("GET")
 
 	port := os.Getenv("PORT")
 	if port == "" {

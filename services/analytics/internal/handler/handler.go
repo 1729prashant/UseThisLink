@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"io/ioutil"
 	"net/http"
 	"os"
 
@@ -113,5 +114,52 @@ func HistoryHandler(db *sql.DB) http.HandlerFunc {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(history)
+	}
+}
+
+type analyticsEvent struct {
+	ShortURL  string `json:"short_url"`
+	SessionID string `json:"session_id"`
+	UserEmail string `json:"user_email"`
+	IPAddress string `json:"ip_address"`
+	UserAgent string `json:"user_agent"`
+	Referrer  string `json:"referrer"`
+	Event     string `json:"event"`
+}
+
+func LogHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var event analyticsEvent
+		if err := json.NewDecoder(r.Body).Decode(&event); err != nil {
+			logrus.Errorf("Invalid analytics event: %v", err)
+			http.Error(w, "Invalid event", http.StatusBadRequest)
+			return
+		}
+		// Optionally enrich with user info from User service
+		var userInfo map[string]interface{}
+		if event.UserEmail != "" {
+			userServiceURL := os.Getenv("USER_SERVICE_URL")
+			if userServiceURL == "" {
+				userServiceURL = "http://user:8083"
+			}
+			resp, err := http.Get(userServiceURL + "/api/userinfo?email=" + event.UserEmail)
+			if err == nil && resp.StatusCode == 200 {
+				defer resp.Body.Close()
+				body, _ := ioutil.ReadAll(resp.Body)
+				_ = json.Unmarshal(body, &userInfo)
+			}
+		}
+		// Write to url_access_logs
+		_, err := db.Exec(`
+			INSERT INTO url_access_logs (short_url, session_id, ip_address, user_agent, referrer, visit_type, city, country, browser, device, operating_system)
+			VALUES ($1, $2, $3, $4, $5, $6, '', '', '', '', '', '')
+		`, event.ShortURL, event.SessionID, event.IPAddress, event.UserAgent, event.Referrer, event.Event)
+		if err != nil {
+			logrus.Errorf("Failed to insert access log: %v", err)
+			http.Error(w, "Failed to log event", http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"logged"}`))
 	}
 }

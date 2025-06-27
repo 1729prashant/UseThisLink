@@ -1,6 +1,18 @@
 version: '3.8'
 
 services:
+  postgres:
+    image: postgres:15
+    restart: always
+    environment:
+      POSTGRES_USER: usethislink
+      POSTGRES_PASSWORD: usethislink
+      POSTGRES_DB: usethislink
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
   gateway:
     build: ./services/gateway
     ports:
@@ -22,34 +34,47 @@ services:
     build: ./services/link
     environment:
       - PORT=8081
-      - LINK_DB_PATH=/data/usethislink_link.db
+      - PGHOST=postgres
+      - PGPORT=5432
+      - PGUSER=usethislink
+      - PGPASSWORD=usethislink
+      - PGDATABASE=usethislink
+      - PGSCHEMA=link
       - BASE_URL=http://localhost:8080
-    volumes:
-      - link-db:/data
+    depends_on:
+      - postgres
 
   analytics:
     build: ./services/analytics
     environment:
       - PORT=8082
-      - ANALYTICS_DB_PATH=/data/usethislink_analytics.db
+      - PGHOST=postgres
+      - PGPORT=5432
+      - PGUSER=usethislink
+      - PGPASSWORD=usethislink
+      - PGDATABASE=usethislink
+      - PGSCHEMA=analytics
       - BASE_URL=http://localhost:8080
-    volumes:
-      - analytics-db:/data
+    depends_on:
+      - postgres
 
   user:
     build: ./services/user
     environment:
       - PORT=8083
-      - USER_DB_PATH=/data/usethislink_user.db
+      - PGHOST=postgres
+      - PGPORT=5432
+      - PGUSER=usethislink
+      - PGPASSWORD=usethislink
+      - PGDATABASE=usethislink
+      - PGSCHEMA=user
       - BASE_URL=http://localhost:8080
       - SMTP_HOST=smtp.example.com
       - SMTP_PORT=587
       - SMTP_USER=youruser@example.com
       - SMTP_PASS=yourpassword
-    volumes:
-      - user-db:/data
+    depends_on:
+      - postgres
 
 volumes:
-  link-db:
-  analytics-db:
-  user-db: 
+  pgdata: 
