@@ -24,3 +24,39 @@ go.work.sum
 
 # env file
 .env
+
+# Go build artifacts
+bin/
+coverage.*
+*.coverprofile
+
+# Docker/Postgres
+pgdata/
+*.db
+
+# Logs
+*.log
+logs/
+
+# Editor/IDE
+.vscode/
+.idea/
+.cursor/
+.cache/
+*.swp
+*~
+
+# SSL/Secrets
+*.pem
+*.key
+*.crt
+secrets.*
+*.secret*
+
+# Docker Compose local overrides
+docker-compose.override.yml
+
+# Node/Frontend (if added in future)
+node_modules/
+dist/
+build/
